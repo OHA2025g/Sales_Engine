@@ -243,6 +243,7 @@ def research_account(
     result = llm.complete(
         json.dumps({"account": account, "contacts": contacts, "knowledge": knowledge}, default=str),
         system=system,
+        reasoning=True,
     )
     _log_usage(db, tenant_id, "account_research", version, result)
     structured = {
@@ -419,6 +420,7 @@ def meeting_prep(
     result = llm.complete(
         json.dumps({"account": account, "contacts": contacts, "knowledge": knowledge}, default=str),
         system=system,
+        reasoning=True,
     )
     _log_usage(db, tenant_id, "meeting_prep", version, result)
     rec = AIRecommendation(
@@ -453,7 +455,7 @@ def summarize_entity(
     hits = retrieve(db, tenant_id=tenant_id, query=json.dumps(payload, default=str)[:200])
     system, version = _prompt(db, tenant_id, key, "Summarize using tools and citations only.")
     llm = get_llm_provider()
-    result = llm.complete(json.dumps({"record": payload, "knowledge": hits}, default=str), system=system)
+    result = llm.complete(json.dumps({"record": payload, "knowledge": hits}, default=str), system=system, reasoning=True)
     _log_usage(db, tenant_id, key, version, result)
     db.commit()
     return {"summary": result.text, "citations": hits, "provider": result.provider, "is_mock": result.is_mock}

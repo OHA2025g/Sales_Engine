@@ -1,6 +1,9 @@
+import json
+
 import httpx
 from fastapi.testclient import TestClient
 
+from app.ai.providers import CompletionResult
 from app.providers.lead_discovery import (
     ApifyLeadDiscoveryProvider,
     DiscoveredLead,
@@ -8,6 +11,7 @@ from app.providers.lead_discovery import (
     DiscoveryResult,
     map_dataset_items,
 )
+from app.services.discovery import clean_domain, infer_company_domain
 from app.services.discovery_query import build_discovery_query
 from tests.conftest import login
 
@@ -167,6 +171,66 @@ def test_map_dataset_skips_malformed_and_keeps_provider_ref() -> None:
     assert rows[0].linkedin_url.endswith("sam-rao")
 
 
+def test_map_harvest_search_actor_fields() -> None:
+    rows = map_dataset_items(
+        [
+            {
+                "firstName": "Asha",
+                "lastName": "Mehta",
+                "headline": "Technology leader",
+                "linkedinUrl": "https://www.linkedin.com/in/asha",
+                "currentPosition": [
+                    {"companyName": "Harbor", "position": "Chief Information Officer"},
+                ],
+                "companyWebsites": [{"domain": "harbor.example", "url": "https://www.harbor.example"}],
+                "emails": [{"email": "asha@harbor.example", "deliverable": True}],
+            }
+        ]
+    )
+    assert rows[0].title == "Chief Information Officer"
+    assert rows[0].company_name == "Harbor"
+    assert rows[0].company_website == "https://www.harbor.example"
+    assert rows[0].email == "asha@harbor.example"
+    assert rows[0].linkedin_url.endswith("/asha")
+
+
+def test_map_dataset_keeps_company_website() -> None:
+    rows = map_dataset_items(
+        [
+            {
+                "firstName": "Asha",
+                "lastName": "Mehta",
+                "companyName": "Harbor",
+                "companyWebsite": "https://www.harbor.example/about",
+            }
+        ]
+    )
+    assert rows[0].company_website == "https://www.harbor.example/about"
+    assert clean_domain(rows[0].company_website) == "harbor.example"
+
+
+def test_llm_fills_domain_when_scrape_has_no_website(monkeypatch) -> None:
+    class _Llm:
+        def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:
+            _ = (prompt, system, model, reasoning)
+            return CompletionResult(
+                text="harbor.example",
+                provider="gemini",
+                model="gemini-2.5-flash",
+                input_tokens=1,
+                output_tokens=1,
+                latency_ms=1,
+                is_mock=False,
+                estimated_cost=0.0,
+            )
+
+    monkeypatch.setattr("app.services.discovery.get_llm_provider", lambda *args, **kwargs: _Llm())
+    domain = infer_company_domain(DiscoveredLead("Asha", "Mehta", "", "CIO", "Harbor Payments", "https://linkedin.com/in/asha"))
+    assert domain == "harbor.example"
+    assert infer_company_domain(DiscoveredLead("Asha", "Mehta", "", "CIO", "Harbor", "", company_website="https://www.harbor.example")) == "harbor.example"
+    assert clean_domain("gmail.com") == ""
+
+
 def test_query_builder_uses_icp_filters() -> None:
     class FakeICP:
         industries = "technology,unknown-vertical"
@@ -189,6 +253,51 @@ def test_query_builder_uses_icp_filters() -> None:
     assert "D" in query.company_headcount
     assert "revenue OS" in query.search_query
     assert "unknown-vertical" in query.search_query
+
+
+def test_search_actor_requests_email_mode() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/runs"):
+            seen["body"] = request.read().decode()
+            return httpx.Response(200, json={"data": {"id": "run-1", "status": "SUCCEEDED", "defaultDatasetId": "ds-1"}})
+        return httpx.Response(
+            200,
+            json=[{"firstName": "Asha", "lastName": "Mehta", "email": {"email": "asha@harbor.example"}, "linkedinUrl": "https://linkedin.com/in/asha"}],
+        )
+
+    provider = ApifyLeadDiscoveryProvider(
+        token="token",
+        actor_id="harvestapi/linkedin-profile-search",
+        max_items=10,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    result = provider.discover(DiscoveryQuery(search_query="CIO"))
+    body = json.loads(str(seen["body"]))
+    assert body["profileScraperMode"] == "Full + email search"
+    assert body["maxItems"] == 10
+    assert result.candidates[0].email == "asha@harbor.example"
+
+
+def test_harvest_batch_never_exceeds_10() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/runs"):
+            seen["body"] = request.read().decode()
+            return httpx.Response(200, json={"data": {"id": "run-1", "status": "SUCCEEDED", "defaultDatasetId": "ds-1"}})
+        return httpx.Response(200, json=[])
+
+    provider = ApifyLeadDiscoveryProvider(
+        token="token",
+        actor_id="harvestapi/linkedin-profile-search",
+        max_items=100,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    provider.discover(DiscoveryQuery(search_query="CIO", max_items=100))
+    body = json.loads(str(seen["body"]))
+    assert body["maxItems"] == 10
 
 
 def test_empty_apify_dataset_invents_nobody() -> None:

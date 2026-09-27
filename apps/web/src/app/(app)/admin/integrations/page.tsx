@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
-const CREDENTIAL_PROVIDERS = ["linkedin", "meta", "twilio", "vapi", "apify", "exotel", "openai", "recall", "enrichment"];
+const CREDENTIAL_PROVIDERS = ["linkedin", "meta", "twilio", "vapi", "apify", "exotel", "gemini", "recall", "enrichment"];
 
 type IntegrationAccount = {
   id: string;
@@ -200,7 +200,7 @@ function IntegrationsBody() {
           <p className="mb-3 text-sm font-semibold text-navy">Channel modes</p>
           <ul className="grid gap-3 md:grid-cols-2">
             {providers.data
-              .filter((row) => ["Apify", "LinkedIn Ads", "Meta Ads", "Voice", "Gmail", "Google Calendar"].includes(row.name))
+              .filter((row) => ["Gemini", "Apify", "LinkedIn Ads", "Meta Ads", "Voice", "Gmail", "Google Calendar"].includes(row.name))
               .map((row) => (
                 <li key={row.name} className="panel p-4" data-testid={`integration-${row.name.toLowerCase().replaceAll(" ", "-")}`}>
                   <div className="flex items-start justify-between gap-3">

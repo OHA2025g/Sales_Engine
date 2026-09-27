@@ -19,6 +19,7 @@ from app.api.v1 import (
     providers,
     public,
     search,
+    social,
     webhooks,
 )
 
@@ -29,6 +30,7 @@ api_router.include_router(command_center.router)
 api_router.include_router(crm.router)
 api_router.include_router(ai.router)
 api_router.include_router(search.router)
+api_router.include_router(social.router)
 api_router.include_router(imports.router)
 api_router.include_router(market.router)
 api_router.include_router(acquisition.router)

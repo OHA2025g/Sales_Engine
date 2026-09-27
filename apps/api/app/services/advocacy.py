@@ -151,6 +151,7 @@ def run_advocacy_agent(db: Session, *, tenant_id: UUID, actor_id: UUID, customer
                 "You are AdvocacyAgent. Prepare evidence, recommend advocacy type, draft a request, "
                 "and a case-study outline. Never invent quotes. quote stays null until approved. No tools."
             ),
+            reasoning=True,
         )
         reused = upsert_artifact(
             db,

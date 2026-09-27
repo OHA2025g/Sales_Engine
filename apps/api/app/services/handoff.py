@@ -110,6 +110,7 @@ def run_handoff_agent(evidence: dict) -> dict:
             "Identify missing handoff fields. Highlight risks. Generate a kickoff agenda. "
             "Never invent commercial terms, prices, or commitments. Unknown stays unknown. No tools."
         ),
+        reasoning=True,
     )
     return {"text": result.text, "provider": result.provider, "is_mock": result.is_mock}
 

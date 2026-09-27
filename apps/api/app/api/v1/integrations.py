@@ -320,7 +320,7 @@ def save_provider_credential(
     db: Annotated[Session, Depends(get_db)],
     ctx: Annotated[AuthContext, Depends(require_permission("integrations.write"))],
 ) -> Envelope[IntegrationAccountOut]:
-    allowed = {"linkedin", "meta", "twilio", "vapi", "apify", "exotel", "openai", "recall", "enrichment"}
+    allowed = {"linkedin", "meta", "twilio", "vapi", "apify", "exotel", "gemini", "recall", "enrichment"}
     if body.provider not in allowed:
         raise HTTPException(status_code=422, detail="Provider is not in the tenant credential allow-list")
     row = upsert_token_account(

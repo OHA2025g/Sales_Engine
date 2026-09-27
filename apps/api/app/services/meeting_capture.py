@@ -13,6 +13,7 @@ from app.models.lifecycle import MeetingRecord
 from app.providers.meeting_capture import UploadMeetingCaptureProvider, get_meeting_capture_provider
 from app.services.audit import write_audit
 from app.services.meeting_intelligence import apply_meeting_insights, extract_insights
+from app.services.provider_resolve import resolve_channel
 from app.services.query import get_owned
 
 
@@ -150,7 +151,9 @@ def ingest_upload(
     data: bytes,
 ) -> MeetingRecord:
     assert_recording_consent(meeting)
-    provider = UploadMeetingCaptureProvider()
+    resolved = resolve_channel(db, tenant_id, "gemini")
+    api_key = str(resolved.secrets.get("access_token") or "") if resolved.mode == "LIVE" else ""
+    provider = UploadMeetingCaptureProvider(api_key=api_key)
     result = provider.transcribe(filename=filename, data=data)
     if not result.ok:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=result.reason)

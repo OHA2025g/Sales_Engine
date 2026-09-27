@@ -72,6 +72,7 @@ def prepare_qbr(db: Session, *, tenant_id: UUID, actor_id: UUID, customer: Custo
                 "You are QBRAgent. Prepare a QBR brief from persisted evidence only. "
                 "Do not invent ROI, ARR, usage, or quotes. Unknown stays null. Recommend an agenda."
             ),
+            reasoning=True,
         )
         reused = upsert_artifact(
             db,

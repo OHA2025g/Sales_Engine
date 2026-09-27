@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.ai.providers import NotConfiguredLLMProvider, OpenAILLMProvider, get_llm_provider
+from app.ai.providers import GeminiEmbeddingProvider, GeminiLLMProvider, NotConfiguredLLMProvider, get_llm_provider
 from app.core.config import get_settings
 from app.db.session import get_session
 from app.models.identity import User
@@ -142,9 +142,96 @@ def test_tenant_row_makes_voice_live_when_env_is_mock(client: TestClient, monkey
         get_settings.cache_clear()
 
 
-def test_openai_live_without_key_is_not_silent_mock(monkeypatch) -> None:
-    monkeypatch.setenv("LLM_PROVIDER", "openai")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
+def test_gemini_chat_posts_generate_content(monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash")
+    monkeypatch.setenv("GEMINI_REASONING_MODEL", "gemini-2.5-flash")
+    get_settings.cache_clear()
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "modelVersion": "gemini-2.5-flash",
+                "candidates": [{"content": {"parts": [{"text": "draft"}, {"thought": True, "text": "hidden"}]}}],
+                "usageMetadata": {"promptTokenCount": 3, "candidatesTokenCount": 1},
+            }
+
+    class _Client:
+        def __init__(self) -> None:
+            self.url = ""
+            self.body: dict | None = None
+            self.headers: dict | None = None
+
+        def post(self, url: str, headers: dict | None = None, json: dict | None = None) -> _Response:
+            self.url = url
+            self.body = json
+            self.headers = headers
+            return _Response()
+
+    client = _Client()
+    try:
+        result = GeminiLLMProvider(api_key="test-key", client=client).complete("hello", system="write")  # type: ignore[arg-type]
+        assert client.url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        assert client.headers is not None
+        assert client.headers["x-goog-api-key"] == "test-key"
+        assert client.body is not None
+        assert client.body["systemInstruction"] == {"parts": [{"text": "write"}]}
+        assert client.body["contents"] == [{"role": "user", "parts": [{"text": "hello"}]}]
+        assert "generationConfig" not in client.body
+        assert result.provider == "gemini"
+        assert result.text == "draft"
+        assert result.is_mock is False
+        assert result.input_tokens == 3
+        reasoned = GeminiLLMProvider(api_key="test-key", client=client).complete("why", system="analyze", reasoning=True)  # type: ignore[arg-type]
+        assert client.body is not None
+        assert client.body["generationConfig"] == {"thinkingConfig": {"thinkingBudget": 2048}}
+        assert reasoned.provider == "gemini"
+    finally:
+        monkeypatch.delenv("GEMINI_DEFAULT_MODEL", raising=False)
+        monkeypatch.delenv("GEMINI_REASONING_MODEL", raising=False)
+        get_settings.cache_clear()
+
+
+def test_gemini_embeddings_post_batch_embed(monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+    get_settings.cache_clear()
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"embeddings": [{"values": [0.1, 0.2]}, {"values": [0.3, 0.4]}]}
+
+    class _Client:
+        def __init__(self) -> None:
+            self.url = ""
+            self.body: dict | None = None
+
+        def post(self, url: str, headers: dict | None = None, json: dict | None = None) -> _Response:
+            self.url = url
+            self.body = json
+            return _Response()
+
+    client = _Client()
+    try:
+        vectors = GeminiEmbeddingProvider(api_key="test-key", client=client).embed(["one", "two"])  # type: ignore[arg-type]
+        assert client.url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents"
+        assert client.body is not None
+        assert client.body["requests"][0]["model"] == "models/gemini-embedding-001"
+        assert client.body["requests"][0]["taskType"] == "SEMANTIC_SIMILARITY"
+        assert client.body["requests"][1]["content"] == {"parts": [{"text": "two"}]}
+        assert vectors == [[0.1, 0.2], [0.3, 0.4]]
+    finally:
+        monkeypatch.delenv("GEMINI_EMBEDDING_MODEL", raising=False)
+        get_settings.cache_clear()
+
+
+def test_gemini_live_without_key_is_not_silent_mock(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
     get_settings.cache_clear()
     try:
         llm = get_llm_provider()
@@ -159,9 +246,9 @@ def test_openai_live_without_key_is_not_silent_mock(monkeypatch) -> None:
 
 def test_activate_provisions_tenant_credentials_from_env(client: TestClient, monkeypatch) -> None:
     login(client)
-    monkeypatch.setenv("LLM_PROVIDER", "openai")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-activate")
-    monkeypatch.setenv("OPENAI_DEFAULT_MODEL", "gpt-4.1-mini")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "sk-test-activate")
+    monkeypatch.setenv("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash")
     monkeypatch.setenv("DISCOVERY_PROVIDER", "apify")
     monkeypatch.setenv("APIFY_API_TOKEN", "apify-test-activate")
     monkeypatch.setenv("APIFY_ACTOR_ID", "harvestapi/linkedin-profile-search")
@@ -172,20 +259,20 @@ def test_activate_provisions_tenant_credentials_from_env(client: TestClient, mon
         activate_mode(db, tenant_id=user.tenant_id, actor_id=user.id, target="DEMO", reason="full-funnel activate")
         db.commit()
         modes = channel_modes(db, user.tenant_id)
-        assert modes["openai"]["mode"] == "LIVE"
-        assert modes["openai"]["tenant_credential"] is True
+        assert modes["gemini"]["mode"] == "LIVE"
+        assert modes["gemini"]["tenant_credential"] is True
         assert modes["discovery"]["mode"] == "LIVE"
         assert modes["discovery"]["tenant_credential"] is True
-        assert isinstance(get_llm_provider(db, user.tenant_id), OpenAILLMProvider)
+        assert isinstance(get_llm_provider(db, user.tenant_id), GeminiLLMProvider)
         assert isinstance(get_lead_discovery_provider(db, user.tenant_id), ApifyLeadDiscoveryProvider)
     finally:
-        for row in db.scalars(select(ProviderAccount).where(ProviderAccount.tenant_id == user.tenant_id, ProviderAccount.provider.in_(["openai", "apify"]))).all():
+        for row in db.scalars(select(ProviderAccount).where(ProviderAccount.tenant_id == user.tenant_id, ProviderAccount.provider.in_(["gemini", "apify"]))).all():
             row.status = "disconnected"
         db.commit()
         db.close()
         monkeypatch.delenv("LLM_PROVIDER", raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_DEFAULT_MODEL", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_DEFAULT_MODEL", raising=False)
         monkeypatch.delenv("DISCOVERY_PROVIDER", raising=False)
         monkeypatch.delenv("APIFY_API_TOKEN", raising=False)
         monkeypatch.delenv("APIFY_ACTOR_ID", raising=False)

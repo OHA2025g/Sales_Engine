@@ -1,10 +1,10 @@
-import json
 import math
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from uuid import UUID
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -25,7 +25,7 @@ class CompletionResult:
 
 class LLMProvider(ABC):
     @abstractmethod
-    def complete(self, prompt: str, *, system: str, model: str | None = None) -> CompletionResult:
+    def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:
         raise NotImplementedError
 
 
@@ -36,7 +36,8 @@ class EmbeddingProvider(ABC):
 
 
 class MockLLMProvider(LLMProvider):
-    def complete(self, prompt: str, *, system: str, model: str | None = None) -> CompletionResult:
+    def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:
+        _ = reasoning
         started = time.perf_counter()
         snippet = prompt[:400].replace("\n", " ")
         text = (
@@ -76,12 +77,12 @@ class MockEmbeddingProvider(EmbeddingProvider):
 
 
 class NotConfiguredLLMProvider(LLMProvider):
-    def complete(self, prompt: str, *, system: str, model: str | None = None) -> CompletionResult:
-        _ = (prompt, system)
-        text = "[NOT_CONFIGURED LLM] OPENAI_API_KEY is missing. No model was called."
+    def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:
+        _ = (prompt, system, reasoning)
+        text = "[NOT_CONFIGURED LLM] GEMINI_API_KEY is missing. No model was called."
         return CompletionResult(
             text=text,
-            provider="openai",
+            provider="gemini",
             model=model or "not-configured",
             input_tokens=0,
             output_tokens=0,
@@ -91,74 +92,141 @@ class NotConfiguredLLMProvider(LLMProvider):
         )
 
 
-class OpenAILLMProvider(LLMProvider):
-    def __init__(self, api_key: str = "") -> None:
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+
+def gemini_model_id(model: str) -> str:
+    return model.strip().removeprefix("models/")
+
+
+def gemini_reply_text(payload: dict) -> str:
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        return ""
+    parts = ((candidates[0].get("content") or {}).get("parts")) or []
+    texts: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict) or part.get("thought"):
+            continue
+        text = part.get("text")
+        if isinstance(text, str) and text.strip():
+            texts.append(text)
+    return "".join(texts)
+
+
+class GeminiLLMProvider(LLMProvider):
+    def __init__(self, api_key: str = "", client: httpx.Client | None = None) -> None:
         self._api_key = api_key
+        self._client = client
 
-    def complete(self, prompt: str, *, system: str, model: str | None = None) -> CompletionResult:
-        from openai import OpenAI
-
+    def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:
         settings = get_settings()
-        chosen = model or settings.openai_default_model or settings.openai_fast_model
+        if model:
+            chosen = model
+        elif reasoning and settings.gemini_reasoning_model:
+            chosen = settings.gemini_reasoning_model
+        else:
+            chosen = settings.gemini_default_model or settings.gemini_fast_model
         if not chosen:
-            raise RuntimeError("OPENAI_DEFAULT_MODEL is not configured")
-        client = OpenAI(api_key=self._api_key or settings.openai_api_key)
+            raise RuntimeError("GEMINI_DEFAULT_MODEL is not configured")
+        api_key = self._api_key or settings.gemini_api_key
+        model_id = gemini_model_id(chosen)
+        body: dict = {
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        }
+        if reasoning:
+            body["generationConfig"] = {"thinkingConfig": {"thinkingBudget": 2048}}
+        client = self._client or httpx.Client(timeout=60.0)
+        close = self._client is None
         started = time.perf_counter()
-        response = client.responses.create(
-            model=chosen,
-            input=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        text = getattr(response, "output_text", None) or json.dumps(response.model_dump())
-        usage = getattr(response, "usage", None)
-        input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
-        output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
-        latency = int((time.perf_counter() - started) * 1000)
+        try:
+            response = client.post(
+                f"{GEMINI_API_BASE}/models/{model_id}:generateContent",
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json=body,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        finally:
+            if close:
+                client.close()
+        usage = payload.get("usageMetadata") or {}
         return CompletionResult(
-            text=text,
-            provider="openai",
-            model=chosen,
-            input_tokens=int(input_tokens or 0),
-            output_tokens=int(output_tokens or 0),
-            latency_ms=latency,
+            text=gemini_reply_text(payload),
+            provider="gemini",
+            model=str(payload.get("modelVersion") or model_id),
+            input_tokens=int(usage.get("promptTokenCount") or 0),
+            output_tokens=int(usage.get("candidatesTokenCount") or 0),
+            latency_ms=int((time.perf_counter() - started) * 1000),
             is_mock=False,
             estimated_cost=0.0,
         )
 
 
-class OpenAIEmbeddingProvider(EmbeddingProvider):
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        from openai import OpenAI
+class GeminiEmbeddingProvider(EmbeddingProvider):
+    def __init__(self, api_key: str = "", client: httpx.Client | None = None) -> None:
+        self._api_key = api_key
+        self._client = client
 
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
         settings = get_settings()
-        model = settings.openai_embedding_model
+        model = settings.gemini_embedding_model
         if not model:
-            raise RuntimeError("OPENAI_EMBEDDING_MODEL is not configured")
-        client = OpenAI(api_key=settings.openai_api_key)
-        response = client.embeddings.create(model=model, input=texts)
-        return [item.embedding for item in response.data]
+            raise RuntimeError("GEMINI_EMBEDDING_MODEL is not configured")
+        api_key = self._api_key or settings.gemini_api_key
+        model_id = gemini_model_id(model)
+        client = self._client or httpx.Client(timeout=60.0)
+        close = self._client is None
+        try:
+            response = client.post(
+                f"{GEMINI_API_BASE}/models/{model_id}:batchEmbedContents",
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json={
+                    "requests": [
+                        {
+                            "model": f"models/{model_id}",
+                            "content": {"parts": [{"text": text}]},
+                            "taskType": "SEMANTIC_SIMILARITY",
+                        }
+                        for text in texts
+                    ]
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        finally:
+            if close:
+                client.close()
+        return [list((item or {}).get("values") or []) for item in payload.get("embeddings") or []]
 
 
 def get_llm_provider(db: Session | None = None, tenant_id: UUID | None = None) -> LLMProvider:
     settings = get_settings()
     if db is not None and tenant_id is not None:
-        resolved = resolve_channel(db, tenant_id, "openai")
+        resolved = resolve_channel(db, tenant_id, "gemini")
         if resolved.mode == "LIVE" and resolved.secrets.get("access_token"):
-            return OpenAILLMProvider(api_key=resolved.secrets["access_token"])
-        if resolved.mode == "NOT_CONFIGURED" or settings.llm_provider == "openai":
+            return GeminiLLMProvider(api_key=resolved.secrets["access_token"])
+        if resolved.mode == "NOT_CONFIGURED" or settings.llm_provider == "gemini":
             return NotConfiguredLLMProvider()
         return MockLLMProvider()
-    if settings.llm_provider == "openai":
-        if settings.openai_api_key:
-            return OpenAILLMProvider()
+    if settings.llm_provider == "gemini":
+        if settings.gemini_api_key:
+            return GeminiLLMProvider()
         return NotConfiguredLLMProvider()
     return MockLLMProvider()
 
 
-def get_embedding_provider() -> EmbeddingProvider:
+def get_embedding_provider(db: Session | None = None, tenant_id: UUID | None = None) -> EmbeddingProvider:
     settings = get_settings()
-    if settings.resolved_llm_provider == "openai" and settings.openai_embedding_model:
-        return OpenAIEmbeddingProvider()
+    if not settings.gemini_embedding_model:
+        return MockEmbeddingProvider()
+    if db is not None and tenant_id is not None:
+        resolved = resolve_channel(db, tenant_id, "gemini")
+        if resolved.mode == "LIVE" and resolved.secrets.get("access_token"):
+            return GeminiEmbeddingProvider(api_key=resolved.secrets["access_token"])
+    if settings.resolved_llm_provider == "gemini" and settings.gemini_api_key:
+        return GeminiEmbeddingProvider()
     return MockEmbeddingProvider()

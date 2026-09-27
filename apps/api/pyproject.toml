@@ -17,7 +17,6 @@ dependencies = [
   "celery>=5.4.0",
   "python-multipart>=0.0.20",
   "psycopg[binary]>=3.2.3",
-  "openai>=1.58.1",
   "prometheus-client>=0.21.1",
   "cryptography>=44.0.0",
 ]

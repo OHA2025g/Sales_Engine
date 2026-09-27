@@ -14,11 +14,21 @@ def normalize_actor_id(actor_id: str) -> str:
     return actor_id.strip().replace("/", "~")
 
 
+SEARCH_EMAIL_MODE = "Full + email search"
+PROFILE_EMAIL_MODE = "Profile details + email search ($10 per 1k)"
+HARVEST_MAX_ITEMS = 10
+DISCOVERY_DAILY_LIMIT = 50
+
+
 def _text(item: dict[str, Any], *keys: str) -> str:
     for key in keys:
         value = item.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
+        if isinstance(value, dict):
+            nested = value.get("email") or value.get("value") or value.get("address")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
         if isinstance(value, list) and value:
             first = value[0]
             if isinstance(first, str) and first.strip():
@@ -42,6 +52,7 @@ class DiscoveredLead:
     provider_ref: str = ""
     confidence: int = 0
     source_url: str = ""
+    company_website: str = ""
 
 
 @dataclass(frozen=True)
@@ -152,7 +163,7 @@ class ApifyLeadDiscoveryProvider:
     ) -> None:
         self._token = token
         self._actor_id = normalize_actor_id(actor_id)
-        self._max_items = max(1, min(max_items, 50))
+        self._max_items = max(1, min(max_items, HARVEST_MAX_ITEMS))
         self._process_token = process_token
         self._client = client
 
@@ -180,7 +191,7 @@ class ApifyLeadDiscoveryProvider:
             payload = {
                 "searchQuery": search,
                 "maxItems": max_items,
-                "profileScraperMode": "Short",
+                "profileScraperMode": SEARCH_EMAIL_MODE,
             }
             geos = [item.strip() for item in query.geographies.split(",") if item.strip()]
             if geos:
@@ -198,7 +209,7 @@ class ApifyLeadDiscoveryProvider:
         else:
             urls = [url.strip() for url in query.profile_urls if url.strip()]
             payload = {
-                "profileScraperMode": "Profile details no email ($4 per 1k)",
+                "profileScraperMode": PROFILE_EMAIL_MODE,
                 "queries": urls,
             }
         if query.process_token or self._process_token:
@@ -293,6 +304,53 @@ class ApifyLeadDiscoveryProvider:
                 client.close()
 
 
+def _current_positions(row: dict[str, Any]) -> list[dict[str, Any]]:
+    for key in ("currentPosition", "currentPositions"):
+        value = row.get(key)
+        if isinstance(value, dict):
+            return [value]
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _website_value(value: str) -> str:
+    text = value.strip()
+    if text and "linkedin.com" not in text.lower():
+        return text
+    return ""
+
+
+def _company_website(row: dict[str, Any]) -> str:
+    sites = row.get("companyWebsites")
+    if isinstance(sites, list):
+        for site in sites:
+            if isinstance(site, str):
+                found = _website_value(site)
+            elif isinstance(site, dict):
+                found = _website_value(_text(site, "url", "domain"))
+            else:
+                found = ""
+            if found:
+                return found
+    for key in ("companyWebsite", "website", "companyUrl", "websiteUrl", "company_website"):
+        found = _website_value(_text(row, key))
+        if found:
+            return found
+    company = row.get("company")
+    if isinstance(company, dict):
+        found = _website_value(_text(company, "website", "url", "companyWebsite"))
+        if found:
+            return found
+    for position in _current_positions(row):
+        found = _website_value(_text(position, "companyWebsite", "website", "companyUrl"))
+        if not found and isinstance(position.get("company"), dict):
+            found = _website_value(_text(position["company"], "website", "url", "companyWebsite"))
+        if found:
+            return found
+    return ""
+
+
 def map_dataset_items(rows: list[Any]) -> list[DiscoveredLead]:
     mapped: list[DiscoveredLead] = []
     for row in rows:
@@ -306,15 +364,15 @@ def map_dataset_items(rows: list[Any]) -> list[DiscoveredLead]:
             if parts:
                 first = parts[0]
                 last = parts[1] if len(parts) > 1 else ""
-        email = _text(row, "email", "emails", "workEmail")
+        email = _text(row, "email", "emails", "workEmail", "verifiedEmail", "primaryEmail")
         title = _text(row, "title", "jobTitle", "headline", "occupation")
         company = _text(row, "companyName", "company", "company_name", "currentCompany")
-        if not company and isinstance(row.get("currentPositions"), list) and row["currentPositions"]:
-            position = row["currentPositions"][0]
-            if isinstance(position, dict):
-                company = _text(position, "companyName", "company")
-                title = title or _text(position, "title")
+        positions = _current_positions(row)
+        if positions:
+            company = company or _text(positions[0], "companyName", "company")
+            title = _text(positions[0], "position", "title") or title
         linkedin = _text(row, "linkedinUrl", "linkedin_url", "profileUrl", "url", "profile_url", "linkedinProfileUrl")
+        website = _company_website(row)
         provider_ref = _text(row, "id", "profileId", "linkedinId", "publicIdentifier", "urn")
         if not first or not last:
             continue
@@ -330,6 +388,7 @@ def map_dataset_items(rows: list[Any]) -> list[DiscoveredLead]:
                 provider_ref=provider_ref[:200],
                 confidence=70 if email or linkedin else 40,
                 source_url=linkedin[:255],
+                company_website=website[:255],
             )
         )
     return mapped

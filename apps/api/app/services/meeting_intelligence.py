@@ -55,6 +55,7 @@ def extract_insights(
             "Use only statements present in the transcript. If a field cannot be cited, use an empty list or empty string. Never invent numbers."
         ),
         system="You extract meeting evidence. Abstain rather than invent. Output JSON only.",
+        reasoning=True,
     )
     payload: dict = {}
     try:

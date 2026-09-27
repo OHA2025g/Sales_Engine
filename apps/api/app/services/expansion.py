@@ -214,6 +214,7 @@ def run_expansion_agent(db: Session, *, tenant_id: UUID, actor_id: UUID, custome
         result = llm.complete(
             json.dumps(payload, default=str),
             system="You are ExpansionAgent. Analyze footprint and whitespace. Do not invent revenue. Amount stays null. No tools.",
+            reasoning=True,
         )
         reused = upsert_artifact(
             db,

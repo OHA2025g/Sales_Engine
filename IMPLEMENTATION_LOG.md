@@ -1,5 +1,21 @@
 # Implementation Log
 
+## 2026-09-27 (Meta sandbox)
+
+- `META_ADS_MODE=sandbox` calls the Marketing API and uses `META_SANDBOX_AD_ACCOUNT_ID`. Those ads are not served. Organic posts use `META_POSTING_MODE=live` and the Page token. Ads use `META_ACCESS_TOKEN` only.
+
+## 2026-09-25 (Organic social posts)
+
+- LinkedIn company posts, Facebook Page posts, and Instagram image posts are a separate path from ads. Modes stay `mock` until a post token and page id are set. A live mode without those values records `NOT_CONFIGURED` and does not publish.
+
+## 2026-09-25 (Gemini live adapters)
+
+- Chat, reasoning, embeddings, and uploaded-meeting transcription use Gemini's HTTP API (`generateContent`, `batchEmbedContents`, inline audio). Model ids and the API key come from `GEMINI_*` settings. Missing live credentials stay `NOT_CONFIGURED`. Example `LLM_PROVIDER` remains `mock`. Re-ingest knowledge after the embedding model changes.
+
+## 2026-09-24 (Mistral live adapters)
+
+- Chat, embeddings, and uploaded-meeting transcription use Mistral's HTTP API. Model ids and the API key come from `MISTRAL_*` settings. Missing live credentials stay `NOT_CONFIGURED`. Default `LLM_PROVIDER` remains `mock`.
+
 ## 2026-09-12 (Full-funnel completion)
 
 - Phase 0: tenant `ProviderAccount` secrets feed ads, voice, and discovery factories. Debug ingest removed. React `error.tsx` added. Voice docs no longer claim there is no dialer.

@@ -84,7 +84,7 @@ def resolve_provider(
             True,
             dict(deployment_secrets or {}),
         )
-    if live_mode in {"live", "gmail", "google", "twilio", "vapi", "apify", "exotel", "openai", "recall"} and not deployment_configured:
+    if live_mode in {"live", "sandbox", "gmail", "google", "twilio", "vapi", "apify", "exotel", "gemini", "recall"} and not deployment_configured:
         return ResolvedProvider("NOT_CONFIGURED", provider, None, "live mode without credentials", False)
     return ResolvedProvider("NOT_CONFIGURED", provider, None, "no tenant credential", False)
 
@@ -127,8 +127,8 @@ def resolve_channel(db: Session, tenant_id: UUID, channel: str) -> ResolvedProvi
             live_mode=cfg.meta_ads_mode,
             deployment_configured=cfg.meta_ads_configured,
             deployment_secrets={
-                "access_token": cfg.meta_access_token,
-                "account_id": cfg.meta_ad_account_id,
+                "access_token": cfg.meta_ads_token,
+                "account_id": cfg.resolved_meta_ad_account_id,
             },
         )
     if channel == "twilio":
@@ -186,14 +186,14 @@ def resolve_channel(db: Session, tenant_id: UUID, channel: str) -> ResolvedProvi
                 "process_token": cfg.apify_linkedin_process_token,
             },
         )
-    if channel == "openai":
+    if channel == "gemini":
         return resolve_provider(
             db,
             tenant_id=tenant_id,
-            provider="openai",
+            provider="gemini",
             live_mode=cfg.llm_provider,
-            deployment_configured=cfg.openai_configured,
-            deployment_secrets={"access_token": cfg.openai_api_key},
+            deployment_configured=cfg.gemini_configured,
+            deployment_secrets={"access_token": cfg.gemini_api_key},
         )
     if channel == "recall":
         return resolve_provider(

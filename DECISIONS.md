@@ -22,7 +22,7 @@ LLM → approved tool → application service → authorization → repository �
 
 ## ADR-005 — Provider interfaces
 
-OpenAI + Mock for LLM and embeddings. Mock is labeled and used when no key is configured.
+LLM and embeddings use a labeled Mock adapter when no live key is configured. Live calls do not silently fall back to mock.
 
 ## ADR-006 — Post-sale stubs
 
@@ -193,3 +193,11 @@ Telephony and conversation are independent. `+91` routes to Exotel unless the te
 ## ADR-038 — First-touch paid attribution
 
 `campaign_id`, ad identifiers, and UTM values copy from inbound capture onto Lead and Opportunity. Campaign ROAS is closed-won amount on that `campaign_id` divided by persisted `campaign.spent`. LLMs do not invent either number.
+
+## ADR-039 — Mistral is the live model vendor
+
+Superseded by ADR-040. Chat, embeddings, and uploaded-audio transcription previously called Mistral's HTTP API. Model ids came from `MISTRAL_*` settings.
+
+## ADR-040 — Gemini is the live model vendor
+
+Chat and reasoning call Gemini `generateContent`. Embeddings call `batchEmbedContents` with `taskType` `SEMANTIC_SIMILARITY`. Uploaded meeting audio is sent as inline `inlineData` on `generateContent`. Model ids and the API key come from `GEMINI_*` settings. `LLM_PROVIDER=mock` stays the example default until a key is set. A live provider without a key is `NOT_CONFIGURED`. Switching the embedding model requires re-ingesting knowledge; Gemini embedding length will not match an existing `vector(32)` column, so local search uses the stored JSON vectors.

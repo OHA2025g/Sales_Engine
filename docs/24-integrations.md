@@ -33,7 +33,8 @@ Process-level env (not per-tenant OAuth):
 
 - `DISCOVERY_PROVIDER=mock|apify` plus `APIFY_API_TOKEN`, `APIFY_ACTOR_ID`, `APIFY_LINKEDIN_PROCESS_TOKEN`
 - `LINKEDIN_ADS_MODE=mock|live` plus `LINKEDIN_ACCESS_TOKEN`, `LINKEDIN_AD_ACCOUNT_ID`
-- `META_ADS_MODE=mock|live` plus `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`
+- `META_ADS_MODE=mock|live|sandbox` plus `META_ACCESS_TOKEN` and `META_AD_ACCOUNT_ID`. Sandbox uses `META_SANDBOX_AD_ACCOUNT_ID` and does not serve ads. The Page token is only for organic posts and is not used for ads.
+- Organic posts are separate from ads. `LINKEDIN_POSTING_MODE` and `META_POSTING_MODE` are `mock` or `live`. Live without a post token and page id is `NOT_CONFIGURED` and nothing is published. The ads sandbox does not apply to Page or Instagram posts.
 - `VOICE_PROVIDER=mock|twilio|vapi` plus Twilio/Vapi vars (`VAPI_ASSISTANT_ID`, `VAPI_PHONE_NUMBER_ID`, `VAPI_WEBHOOK_SECRET`)
 
 Live mode without credentials is `NOT_CONFIGURED`. Live HTTP failure never swaps to mock.

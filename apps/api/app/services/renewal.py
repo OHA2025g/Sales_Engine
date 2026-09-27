@@ -191,6 +191,7 @@ def prepare_renewal(db: Session, *, tenant_id: UUID, actor_id: UUID, customer: C
                 "You are RenewalAgent. Prepare a renewal brief from persisted evidence. "
                 "Do not invent pricing. If baseline_amount is null, say the commercial number needs review. No tools."
             ),
+            reasoning=True,
         )
         reused = upsert_artifact(
             db,

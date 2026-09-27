@@ -30,6 +30,23 @@ app.add_middleware(
 )
 app.include_router(api_router)
 
+_DOCS_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.jsdelivr.net; "
+    "font-src 'self' data: https://cdn.jsdelivr.net; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'"
+)
+_API_CSP = "default-src 'none'; frame-ancestors 'none'"
+
+
+def _content_security_policy(path: str) -> str:
+    if path.startswith("/docs") or path.startswith("/redoc") or path == "/openapi.json":
+        return _DOCS_CSP
+    return _API_CSP
+
 
 @app.middleware("http")
 async def correlation_middleware(
@@ -47,7 +64,7 @@ async def correlation_middleware(
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    response.headers["Content-Security-Policy"] = _content_security_policy(request.url.path)
     if settings.is_production:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response

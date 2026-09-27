@@ -153,7 +153,7 @@ class AutopilotSettingsOut(APIModel):
     minimum_advocacy_score: int = 70
     max_discovery_runs_per_day: int = 4
     max_candidates_per_run: int = 10
-    max_candidates_per_day: int = 25
+    max_candidates_per_day: int = 50
     emergency_stop: bool = False
     email_channel_paused: bool = False
     ads_channel_paused: bool = False

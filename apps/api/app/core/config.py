@@ -37,11 +37,12 @@ class Settings(BaseSettings):
     whatsapp_provider: str = ""
     global_emergency_stop: bool = False
     llm_provider: str = "mock"
-    openai_api_key: str = ""
-    openai_default_model: str = ""
-    openai_reasoning_model: str = ""
-    openai_fast_model: str = ""
-    openai_embedding_model: str = ""
+    gemini_api_key: str = ""
+    gemini_default_model: str = ""
+    gemini_reasoning_model: str = ""
+    gemini_fast_model: str = ""
+    gemini_embedding_model: str = ""
+    gemini_stt_model: str = ""
     seed_demo: bool = True
     apify_api_token: str = ""
     apify_token: str = ""
@@ -54,7 +55,15 @@ class Settings(BaseSettings):
     linkedin_ads_mode: str = "mock"
     meta_access_token: str = ""
     meta_ad_account_id: str = ""
+    meta_sandbox_ad_account_id: str = ""
     meta_ads_mode: str = "mock"
+    linkedin_posting_mode: str = "mock"
+    linkedin_post_access_token: str = ""
+    linkedin_organization_id: str = ""
+    meta_posting_mode: str = "mock"
+    meta_page_id: str = ""
+    meta_page_access_token: str = ""
+    instagram_business_account_id: str = ""
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
@@ -102,8 +111,8 @@ class Settings(BaseSettings):
 
     @property
     def resolved_llm_provider(self) -> str:
-        if self.llm_provider == "openai":
-            return "openai" if self.openai_api_key else "not_configured"
+        if self.llm_provider == "gemini":
+            return "gemini" if self.gemini_api_key else "not_configured"
         return "mock"
 
     @property
@@ -119,8 +128,32 @@ class Settings(BaseSettings):
         return bool(self.linkedin_access_token and self.linkedin_ad_account_id)
 
     @property
+    def meta_ads_token(self) -> str:
+        return self.meta_access_token.strip()
+
+    @property
+    def resolved_meta_ad_account_id(self) -> str:
+        sandbox = self.meta_sandbox_ad_account_id.strip()
+        primary = self.meta_ad_account_id.strip()
+        if (self.meta_ads_mode or "").strip().lower() == "sandbox" and sandbox:
+            return sandbox
+        return primary or sandbox
+
+    @property
     def meta_ads_configured(self) -> bool:
-        return bool(self.meta_access_token and self.meta_ad_account_id)
+        return bool(self.meta_ads_token and self.resolved_meta_ad_account_id)
+
+    @property
+    def linkedin_posting_configured(self) -> bool:
+        return bool(self.linkedin_post_access_token and self.linkedin_organization_id)
+
+    @property
+    def meta_page_posting_configured(self) -> bool:
+        return bool(self.meta_page_id and self.meta_page_access_token)
+
+    @property
+    def instagram_posting_configured(self) -> bool:
+        return bool(self.meta_page_posting_configured and self.instagram_business_account_id)
 
     @property
     def twilio_configured(self) -> bool:
@@ -143,8 +176,12 @@ class Settings(BaseSettings):
         return bool(self.enrichment_api_key)
 
     @property
-    def openai_configured(self) -> bool:
-        return bool(self.openai_api_key and (self.openai_default_model or self.openai_fast_model))
+    def gemini_configured(self) -> bool:
+        return bool(self.gemini_api_key and (self.gemini_default_model or self.gemini_fast_model))
+
+    @property
+    def gemini_stt_configured(self) -> bool:
+        return bool(self.gemini_api_key and self.gemini_stt_model)
 
     @property
     def webhook_inline_process(self) -> bool:

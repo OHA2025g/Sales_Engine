@@ -44,7 +44,7 @@ def _write_vector(db: Session, chunk_id, embedding: list[float]) -> None:
 
 
 def ingest_text(db: Session, *, tenant_id: UUID, actor_id: UUID, title: str, text: str) -> KnowledgeSource:
-    provider = get_embedding_provider()
+    provider = get_embedding_provider(db, tenant_id)
     parts = chunk_text(text)
     embeddings = provider.embed(parts) if parts else []
     source = KnowledgeSource(
@@ -116,7 +116,7 @@ def _retrieve_pgvector(db: Session, *, tenant_id: UUID, query_vec: list[float], 
 
 
 def retrieve(db: Session, *, tenant_id: UUID, query: str, limit: int = 5) -> list[dict]:
-    provider = get_embedding_provider()
+    provider = get_embedding_provider(db, tenant_id)
     query_vec = provider.embed([query])[0]
     bind = db.get_bind()
     if bind.dialect.name == "postgresql":

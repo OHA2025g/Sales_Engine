@@ -66,6 +66,7 @@ const GROUPS = [
     items: [
       { href: "/pipeline", label: "Pipeline", permission: "opportunities.read", icon: Briefcase },
       { href: "/campaigns", label: "Campaigns", permission: "campaigns.read", icon: Megaphone },
+      { href: "/social", label: "Social posts", permission: "campaigns.read", icon: MessageSquare },
       { href: "/sequences", label: "Sequences", permission: "sequences.read", icon: Repeat },
       { href: "/acquisition", label: "Inbound", permission: "acquisition.read", icon: Megaphone },
     ],

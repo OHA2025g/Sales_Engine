@@ -21,6 +21,7 @@ const ROUTES = [
   { href: "/market/signals", label: "Signals" },
   { href: "/acquisition", label: "Acquisition" },
   { href: "/campaigns", label: "Campaigns" },
+  { href: "/social", label: "Social posts" },
   { href: "/sequences", label: "Sequences" },
   { href: "/conversations", label: "Conversations" },
   { href: "/meetings", label: "Meetings" },

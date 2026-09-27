@@ -60,8 +60,8 @@ def _provider_state(*, connected: bool, is_mock: bool, reason: str, explicit: st
 
 def provider_health(db: Session | None = None, tenant_id: UUID | None = None) -> list[ProviderHealthOut]:
     settings = get_settings()
-    openai_resolved = resolve_channel(db, tenant_id, "openai") if db is not None and tenant_id is not None else None
-    openai_connected = bool(openai_resolved and openai_resolved.mode == "LIVE" and openai_resolved.secrets.get("access_token")) or bool(settings.openai_api_key)
+    gemini_resolved = resolve_channel(db, tenant_id, "gemini") if db is not None and tenant_id is not None else None
+    gemini_connected = bool(gemini_resolved and gemini_resolved.mode == "LIVE" and gemini_resolved.secrets.get("access_token")) or bool(settings.gemini_api_key)
     discovery = get_lead_discovery_provider(db, tenant_id).health()
     email = get_email_provider(db, tenant_id).health()
     calendar = get_calendar_provider(db, tenant_id).health()
@@ -93,24 +93,24 @@ def provider_health(db: Session | None = None, tenant_id: UUID | None = None) ->
 
     rows = [
         ProviderHealthOut(
-            name="OpenAI",
-            provider=settings.resolved_llm_provider if settings.resolved_llm_provider != "not_configured" else "openai",
-            is_mock=settings.resolved_llm_provider == "mock" and not openai_connected,
-            connected=openai_connected,
+            name="Gemini",
+            provider=settings.resolved_llm_provider if settings.resolved_llm_provider != "not_configured" else "gemini",
+            is_mock=settings.resolved_llm_provider == "mock" and not gemini_connected,
+            connected=gemini_connected,
             reason=(
-                openai_resolved.reason
-                if openai_resolved and openai_resolved.mode == "LIVE"
+                gemini_resolved.reason
+                if gemini_resolved and gemini_resolved.mode == "LIVE"
                 else (
                     "Live key present"
-                    if openai_connected
+                    if gemini_connected
                     else (
-                        "LLM_PROVIDER is openai but credentials are missing"
-                        if settings.llm_provider == "openai"
-                        else "LLM_PROVIDER is mock until OPENAI_API_KEY is set"
+                        "LLM_PROVIDER is gemini but credentials are missing"
+                        if settings.llm_provider == "gemini"
+                        else "LLM_PROVIDER is mock until GEMINI_API_KEY is set"
                     )
                 )
             ),
-            state="CONNECTED" if openai_connected else ("NOT_CONFIGURED" if settings.llm_provider == "openai" else "MOCK"),
+            state="CONNECTED" if gemini_connected else ("NOT_CONFIGURED" if settings.llm_provider == "gemini" else "MOCK"),
         ),
         ProviderHealthOut(
             name="Apify",
@@ -206,7 +206,7 @@ def provider_health(db: Session | None = None, tenant_id: UUID | None = None) ->
         ),
     ]
     keys = {
-        "OpenAI": "openai",
+        "Gemini": "gemini",
         "Apify": "apify",
         "Gmail": "google",
         "Google Calendar": "google",

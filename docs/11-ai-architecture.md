@@ -4,7 +4,7 @@
 
 `LLMProvider`, `EmbeddingProvider`, `RerankerProvider`, `SpeechToTextProvider`, `TextToSpeechProvider`, `VisionProvider`.
 
-MVP implements LLM and Embedding: `OpenAI` + `Mock`.
+MVP implements LLM, embeddings, and uploaded-audio transcription: `Gemini` + `Mock`. Chat uses `generateContent`. Embeddings use `batchEmbedContents`. Uploaded audio is inline `generateContent`.
 
 ## Router
 

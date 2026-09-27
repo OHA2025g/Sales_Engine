@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Protocol
@@ -27,6 +28,17 @@ META_OBJECTIVES = {
     "awareness": "OUTCOME_AWARENESS",
     "engagement": "OUTCOME_ENGAGEMENT",
 }
+
+def meta_refusal(prefix: str, response: httpx.Response) -> str:
+    message = ""
+    try:
+        error = (response.json() or {}).get("error") or {}
+        if isinstance(error, dict):
+            message = str(error.get("error_user_msg") or error.get("message") or "").replace("\n", " ").strip()
+    except ValueError:
+        message = ""
+    return f"{prefix} ({response.status_code}). {message[:180]}".strip()
+
 
 STATUS_MAP = {
     "ACTIVE": "ACTIVE",
@@ -269,28 +281,57 @@ class LinkedInAdsProvider:
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._token}",
-            "Linkedin-Version": "202411",
+            "Linkedin-Version": "202609",
             "X-Restli-Protocol-Version": "2.0.0",
             "Content-Type": "application/json",
         }
+
+    def _campaign_group_urn(self, client: httpx.Client) -> str:
+        response = client.get(
+            f"https://api.linkedin.com/rest/adAccounts/{self._account}/adCampaignGroups",
+            headers=self._headers(),
+            params={"q": "search"},
+        )
+        if response.status_code >= 400:
+            return ""
+        elements = (response.json() or {}).get("elements") or []
+        if not elements:
+            return ""
+        group_id = str(elements[0].get("id") or "")
+        return f"urn:li:sponsoredCampaignGroup:{group_id}" if group_id else ""
 
     def create_campaign(self, *, name: str, objective: str, budget: Decimal) -> AdsCampaignResult:
         owns = self._client is None
         client = self._client or httpx.Client(timeout=30.0)
         mapped = LINKEDIN_OBJECTIVES.get(objective.strip().lower(), "WEBSITE_VISIT")
+        daily = budget if budget > 0 else Decimal("10")
         try:
+            group = self._campaign_group_urn(client)
+            if not group:
+                return AdsCampaignResult(
+                    ok=False,
+                    provider="linkedin-ads",
+                    is_mock=False,
+                    reason="LinkedIn ad account has no campaign group.",
+                    failure_class="CONFIGURATION",
+                )
             response = client.post(
                 f"https://api.linkedin.com/rest/adAccounts/{self._account}/adCampaigns",
                 headers=self._headers(),
                 json={
+                    "account": f"urn:li:sponsoredAccount:{self._account}",
+                    "campaignGroup": group,
                     "name": name,
-                    "status": "ACTIVE",
+                    "status": "PAUSED",
                     "type": "SPONSORED_UPDATES",
                     "objectiveType": mapped,
-                    "dailyBudget": {"amount": str(budget), "currencyCode": "USD"},
-                    "unitCost": {"amount": "0", "currencyCode": "USD"},
+                    "costType": "CPC",
+                    "dailyBudget": {"amount": str(daily), "currencyCode": "USD"},
+                    "unitCost": {"amount": "2", "currencyCode": "USD"},
                     "locale": {"country": "US", "language": "en"},
                     "offsiteDeliveryEnabled": False,
+                    "runSchedule": {"start": int(time.time() * 1000)},
+                    "politicalIntent": "NOT_POLITICAL",
                 },
             )
             if response.status_code >= 400:
@@ -309,7 +350,7 @@ class LinkedInAdsProvider:
                 provider="linkedin-ads",
                 is_mock=False,
                 external_id=external_id,
-                provider_status="ACTIVE",
+                provider_status="PAUSED",
                 reason="" if external_id else "LinkedIn returned no campaign id.",
             )
         except httpx.TimeoutException:
@@ -557,11 +598,23 @@ class MetaAdsProvider:
     def health(self) -> AdsHealth:
         return AdsHealth(provider="meta-ads", is_mock=False, connected=True, reason="Meta Marketing credentials are set.")
 
+    def _daily_budget_amount(self, client: httpx.Client, budget: Decimal) -> str:
+        requested = int(budget * 100)
+        minimum = 100
+        response = client.get(
+            f"https://graph.facebook.com/v21.0/act_{self._account}",
+            params={"access_token": self._token, "fields": "min_daily_budget"},
+        )
+        if response.status_code < 400:
+            raw = (response.json() or {}).get("min_daily_budget")
+            if raw is not None:
+                minimum = int(raw)
+        return str(max(requested, minimum))
+
     def create_campaign(self, *, name: str, objective: str, budget: Decimal) -> AdsCampaignResult:
         owns = self._client is None
         client = self._client or httpx.Client(timeout=30.0)
         mapped = META_OBJECTIVES.get(objective.strip().lower(), "OUTCOME_TRAFFIC")
-        cents = int(budget * 100)
         try:
             response = client.post(
                 f"https://graph.facebook.com/v21.0/act_{self._account}/campaigns",
@@ -571,7 +624,7 @@ class MetaAdsProvider:
                     "objective": mapped,
                     "status": "PAUSED",
                     "special_ad_categories": "[]",
-                    "daily_budget": str(max(cents, 100)),
+                    "daily_budget": self._daily_budget_amount(client, budget),
                 },
             )
             if response.status_code >= 400:
@@ -579,7 +632,7 @@ class MetaAdsProvider:
                     ok=False,
                     provider="meta-ads",
                     is_mock=False,
-                    reason=f"Meta Marketing API refused launch ({response.status_code}). No invented spend.",
+                    reason=meta_refusal("Meta Marketing API refused launch", response) + " No invented spend.",
                     status_code=response.status_code,
                     failure_class=classify_http(response.status_code),
                 )
@@ -693,7 +746,6 @@ class MetaAdsProvider:
     def create_ad_set(self, *, campaign_external_id: str, name: str, budget: Decimal) -> AdsCampaignResult:
         owns = self._client is None
         client = self._client or httpx.Client(timeout=30.0)
-        cents = int(budget * 100)
         try:
             response = client.post(
                 f"https://graph.facebook.com/v21.0/act_{self._account}/adsets",
@@ -701,7 +753,7 @@ class MetaAdsProvider:
                 data={
                     "name": name,
                     "campaign_id": campaign_external_id,
-                    "daily_budget": str(max(cents, 100)),
+                    "daily_budget": self._daily_budget_amount(client, budget),
                     "billing_event": "IMPRESSIONS",
                     "optimization_goal": "REACH",
                     "status": "PAUSED",
@@ -872,8 +924,8 @@ def get_ads_provider(channel: str, db: Session | None = None, tenant_id: UUID | 
             return NotConfiguredAdsProvider("linkedin")
         return MockAdsProvider("linkedin")
     mode = (settings.meta_ads_mode or "mock").strip().lower()
-    if mode == "live":
+    if mode in {"live", "sandbox"}:
         if settings.meta_ads_configured:
-            return MetaAdsProvider(token=settings.meta_access_token, ad_account_id=settings.meta_ad_account_id)
+            return MetaAdsProvider(token=settings.meta_ads_token, ad_account_id=settings.resolved_meta_ad_account_id)
         return NotConfiguredAdsProvider("meta")
     return MockAdsProvider("instagram")

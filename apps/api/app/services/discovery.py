@@ -1,18 +1,25 @@
 import json
+import re
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.ai.providers import get_llm_provider
 from app.core.config import get_settings
 from app.models.autonomy import AutopilotSettings
 from app.models.crm import ICP, Account, Contact, Lead
 from app.models.identity import DomainEvent
 from app.models.integrations import ProviderAction
-from app.providers.lead_discovery import DiscoveredLead, get_lead_discovery_provider
+from app.providers.lead_discovery import (
+    DISCOVERY_DAILY_LIMIT,
+    HARVEST_MAX_ITEMS,
+    DiscoveredLead,
+    get_lead_discovery_provider,
+)
 from app.services.audit import emit_event, write_audit
-from app.services.autopilot_settings import at_daily_lead_cap, discovered_today, get_or_create_settings
+from app.services.autopilot_settings import discovered_today, get_or_create_settings
 from app.services.crm import add_activity
 from app.services.discovery_query import build_discovery_query
 from app.services.idempotency import claim_daily_slot
@@ -30,6 +37,70 @@ from app.services.scoring import score_lead
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+_DOMAIN_RE = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
+_FREE_OR_SOCIAL_DOMAINS = {
+    "gmail.com",
+    "googlemail.com",
+    "yahoo.com",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+    "icloud.com",
+    "linkedin.com",
+    "facebook.com",
+    "instagram.com",
+    "x.com",
+    "twitter.com",
+}
+
+
+def clean_domain(value: str) -> str:
+    text = (value or "").strip().lower().strip("`").strip(".,)")
+    for prefix in ("https://", "http://"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+    text = text.split("/")[0].split("?")[0].split()[0] if text else ""
+    if text.startswith("www."):
+        text = text[4:]
+    if "@" in text:
+        text = text.split("@", 1)[1]
+    if not _DOMAIN_RE.match(text) or text in _FREE_OR_SOCIAL_DOMAINS:
+        return ""
+    return text[:255]
+
+
+def infer_company_domain(candidate: DiscoveredLead, *, db: Session | None = None, tenant_id: UUID | None = None) -> str:
+    scraped = clean_domain(candidate.company_website)
+    if scraped:
+        return scraped
+    email_domain = clean_domain(candidate.email.split("@", 1)[1] if "@" in candidate.email else "")
+    if email_domain:
+        return email_domain
+    if not candidate.company_name.strip():
+        return ""
+    result = get_llm_provider(db, tenant_id).complete(
+        (
+            f"Company name: {candidate.company_name}\n"
+            f"Job title: {candidate.title}\n"
+            f"LinkedIn: {candidate.linkedin_url}\n"
+            f"Website text from the scrape: {candidate.company_website or 'none'}"
+        ),
+        system=(
+            "Read the scraped profile and identify the company's public website domain. "
+            "Reply with only the domain, such as example.com. "
+            "If the company is ambiguous or you are not sure, reply UNKNOWN. "
+            "Do not explain."
+        ),
+    )
+    if result.is_mock or "NOT_CONFIGURED" in result.text:
+        return ""
+    first_line = result.text.strip().splitlines()[0] if result.text.strip() else ""
+    if first_line.strip().upper() == "UNKNOWN":
+        return ""
+    match = re.search(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b", first_line.lower())
+    return clean_domain(match.group(0) if match else first_line)
 
 
 def _normalize_url(url: str) -> str:
@@ -118,17 +189,22 @@ def persist_discovered_lead(
         return "duplicate_person", person_match
 
     account = _find_account(db, tenant_id, candidate.company_name, email)
-    domain = email.split("@", 1)[1].lower() if "@" in email else ""
+    domain = infer_company_domain(candidate, db=db, tenant_id=tenant_id)
     if account is None and domain:
         account = db.scalar(
             select(Account).where(Account.tenant_id == tenant_id, Account.domain == domain, Account.deleted_at.is_(None))
         )
+    if account is not None and domain and not account.domain:
+        account.domain = domain
+        if not account.website:
+            account.website = f"https://{domain}"
     if account is None and candidate.company_name:
         account = Account(
             tenant_id=tenant_id,
             created_by=actor_id,
             name=candidate.company_name,
             domain=domain,
+            website=f"https://{domain}" if domain else "",
             ownership="prospect",
             notes="Created by AI discovery. Review before outreach.",
         )
@@ -245,10 +321,10 @@ def candidates_today(db: Session, tenant_id: UUID) -> int:
 
 
 def remaining_candidate_budget(db: Session, settings: AutopilotSettings) -> int:
-    per_run = settings.max_candidates_per_run if settings.max_candidates_per_run > 0 else 10
-    per_day = settings.max_candidates_per_day if settings.max_candidates_per_day > 0 else 25
+    per_run = HARVEST_MAX_ITEMS
+    per_day = DISCOVERY_DAILY_LIMIT
     leftover = max(per_day - candidates_today(db, settings.tenant_id), 0)
-    leftover_leads = max(settings.max_leads_per_day - discovered_today(db, settings.tenant_id), 0) if settings.max_leads_per_day > 0 else leftover
+    leftover_leads = max(per_day - discovered_today(db, settings.tenant_id), 0)
     return max(0, min(per_run, leftover, leftover_leads))
 
 
@@ -289,7 +365,7 @@ def run_discovery(
     ):
         empty["reason"] = "Daily discovery run cap reached"
         return empty
-    if enforce_budget and at_daily_lead_cap(db, settings):
+    if enforce_budget and discovered_today(db, tenant_id) >= DISCOVERY_DAILY_LIMIT:
         empty["reason"] = "Daily discovered-lead cap reached"
         return empty
     if is_circuit_open(db, tenant_id=tenant_id, provider="apify"):
@@ -297,7 +373,8 @@ def run_discovery(
         empty["provider"] = "apify"
         empty["is_mock"] = False
         return empty
-    max_items = remaining_candidate_budget(db, settings) if enforce_budget else min(env.apify_max_items, settings.max_candidates_per_run or 10)
+    max_items = remaining_candidate_budget(db, settings) if enforce_budget else min(env.apify_max_items, HARVEST_MAX_ITEMS)
+    max_items = min(max_items, HARVEST_MAX_ITEMS)
     if enforce_budget and max_items <= 0:
         empty["reason"] = "Daily candidate cap reached"
         return empty

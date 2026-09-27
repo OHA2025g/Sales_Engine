@@ -1,11 +1,12 @@
+import base64
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
 import httpx
-from openai import OpenAI
 from sqlalchemy.orm import Session
 
+from app.ai.providers import GEMINI_API_BASE, gemini_model_id, gemini_reply_text
 from app.core.config import get_settings
 from app.services.provider_ops import classify_http
 from app.services.provider_resolve import resolve_channel
@@ -76,15 +77,31 @@ class ManualMeetingCaptureProvider:
         return MeetingCaptureResult(ok=True, provider="manual", is_mock=False, bot_id=bot_id, status="manual")
 
 
+def _audio_mime(filename: str) -> str:
+    name = (filename or "").lower()
+    if name.endswith(".mp3"):
+        return "audio/mp3"
+    if name.endswith(".wav"):
+        return "audio/wav"
+    if name.endswith(".m4a") or name.endswith(".mp4"):
+        return "audio/mp4"
+    if name.endswith(".mpeg"):
+        return "audio/mpeg"
+    return "audio/webm"
+
+
 class UploadMeetingCaptureProvider:
+    def __init__(self, api_key: str = "") -> None:
+        self._api_key = api_key
+
     def health(self) -> MeetingCaptureHealth:
         settings = get_settings()
-        live = settings.openai_configured
+        live = bool((self._api_key or settings.gemini_api_key) and settings.gemini_stt_model)
         return MeetingCaptureHealth(
             provider="upload-stt",
             is_mock=not live,
             connected=live,
-            reason="OpenAI Whisper is used for uploaded audio." if live else "Upload STT is not configured. Paste a transcript.",
+            reason="Gemini transcription is used for uploaded audio." if live else "Upload STT is not configured. Paste a transcript.",
         )
 
     def schedule_bot(self, *, meeting_url: str, title: str = "") -> MeetingCaptureResult:
@@ -95,17 +112,54 @@ class UploadMeetingCaptureProvider:
         return MeetingCaptureResult(ok=False, provider="upload-stt", is_mock=False, bot_id=bot_id, reason="No stored upload for this id.")
 
     def transcribe(self, *, filename: str, data: bytes) -> MeetingCaptureResult:
-        _ = filename
         settings = get_settings()
-        if not settings.openai_configured:
+        api_key = self._api_key or settings.gemini_api_key
+        model = settings.gemini_stt_model
+        if not api_key or not model:
             return MeetingCaptureResult(ok=False, provider="upload-stt", is_mock=False, reason="STT is not configured.", failure_class="CONFIGURATION")
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = httpx.Client(timeout=120.0)
         try:
-            audio = client.audio.transcriptions.create(model="whisper-1", file=("meeting.webm", data))
-            text = getattr(audio, "text", "") or ""
-            return MeetingCaptureResult(ok=bool(text.strip()), provider="upload-stt", is_mock=False, transcript=text.strip(), status="completed", reason="" if text.strip() else "Whisper returned an empty transcript.")
-        except Exception as exc:  # noqa: BLE001
-            return MeetingCaptureResult(ok=False, provider="upload-stt", is_mock=False, reason=str(exc)[:200], failure_class="TRANSIENT")
+            response = client.post(
+                f"{GEMINI_API_BASE}/models/{gemini_model_id(model)}:generateContent",
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json={
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [
+                                {"text": "Transcribe this recording. Reply with only the spoken words."},
+                                {
+                                    "inlineData": {
+                                        "mimeType": _audio_mime(filename),
+                                        "data": base64.b64encode(data).decode("ascii"),
+                                    }
+                                },
+                            ],
+                        }
+                    ]
+                },
+            )
+            if response.status_code >= 400:
+                return MeetingCaptureResult(
+                    ok=False,
+                    provider="upload-stt",
+                    is_mock=False,
+                    reason=f"Gemini transcription failed ({response.status_code}).",
+                    failure_class=classify_http(response.status_code),
+                )
+            text = gemini_reply_text(response.json() or {}).strip()
+            return MeetingCaptureResult(
+                ok=bool(text),
+                provider="upload-stt",
+                is_mock=False,
+                transcript=text,
+                status="completed",
+                reason="" if text else "Gemini returned an empty transcript.",
+            )
+        except httpx.HTTPError:
+            return MeetingCaptureResult(ok=False, provider="upload-stt", is_mock=False, reason="Gemini transcription network error.", failure_class="TRANSIENT")
+        finally:
+            client.close()
 
 
 class RecallMeetingCaptureProvider:
@@ -195,7 +249,12 @@ def get_meeting_capture_provider(db: Session | None = None, tenant_id: UUID | No
     if chosen == "manual":
         return ManualMeetingCaptureProvider()
     if chosen == "upload":
-        return UploadMeetingCaptureProvider()
+        api_key = ""
+        if db is not None and tenant_id is not None:
+            resolved = resolve_channel(db, tenant_id, "gemini")
+            if resolved.mode == "LIVE":
+                api_key = str(resolved.secrets.get("access_token") or "")
+        return UploadMeetingCaptureProvider(api_key=api_key)
     if db is not None and tenant_id is not None:
         resolved = resolve_channel(db, tenant_id, "recall")
         if resolved.mode == "LIVE" and resolved.secrets.get("access_token"):

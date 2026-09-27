@@ -17,7 +17,7 @@ def provision_env_credentials(db: Session, *, tenant_id: UUID, actor_id: UUID) -
     if settings.linkedin_ads_configured:
         specs.append(("linkedin", settings.linkedin_access_token, {"account_id": settings.linkedin_ad_account_id}))
     if settings.meta_ads_configured:
-        specs.append(("meta", settings.meta_access_token, {"account_id": settings.meta_ad_account_id}))
+        specs.append(("meta", settings.meta_ads_token, {"account_id": settings.resolved_meta_ad_account_id}))
     if settings.twilio_configured:
         specs.append(
             (
@@ -59,8 +59,8 @@ def provision_env_credentials(db: Session, *, tenant_id: UUID, actor_id: UUID) -
                 {"actor_id": settings.apify_actor_id, "process_token": settings.apify_linkedin_process_token},
             )
         )
-    if settings.openai_configured:
-        specs.append(("openai", settings.openai_api_key, {"default_model": settings.openai_default_model}))
+    if settings.gemini_configured:
+        specs.append(("gemini", settings.gemini_api_key, {"default_model": settings.gemini_default_model}))
     if settings.recall_configured:
         specs.append(("recall", settings.recall_api_key, {}))
     if settings.enrichment_configured:
@@ -82,7 +82,7 @@ def provision_env_credentials(db: Session, *, tenant_id: UUID, actor_id: UUID) -
 
 
 def channel_modes(db: Session, tenant_id: UUID) -> dict[str, dict[str, str | bool]]:
-    keys = ("email", "calendar", "discovery", "linkedin", "meta", "twilio", "vapi", "exotel", "openai", "recall", "enrichment")
+    keys = ("email", "calendar", "discovery", "linkedin", "meta", "twilio", "vapi", "exotel", "gemini", "recall", "enrichment")
     rows: dict[str, dict[str, str | bool]] = {}
     for key in keys:
         resolved = resolve_channel(db, tenant_id, key)

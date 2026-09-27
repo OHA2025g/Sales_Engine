@@ -242,6 +242,7 @@ def run_success_agent(db: Session, *, tenant_id: UUID, actor_id: UUID, customer:
                 "recommended intervention, and a suggested customer communication. "
                 "Do not change contracts, prices, or promise product capability. No tools. Do not send."
             ),
+            reasoning=True,
         )
         content = {"brief": result.text, "risk_type": risk.risk_type}
         reused = upsert_artifact(

@@ -21,7 +21,7 @@ SECRET_CLASSES = {
     "TWILIO_AUTH_TOKEN": "provider",
     "VAPI_API_KEY": "provider",
     "VAPI_WEBHOOK_SECRET": "provider",
-    "OPENAI_API_KEY": "provider",
+    "GEMINI_API_KEY": "provider",
     "S3_SECRET_KEY": "storage",
     "METRICS_TOKEN": "ops",
 }

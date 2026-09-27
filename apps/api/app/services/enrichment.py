@@ -27,7 +27,7 @@ def enrich_lead(
         created = refresh_account_intelligence(db, tenant_id=tenant_id, actor_id=actor_id, account=account)
         source = "mock-intelligence"
     email_result = {"ok": False, "email": lead.email, "verified": False, "reason": "", "provider": "", "is_mock": True}
-    host = domain or (lead.email.split("@", 1)[1] if "@" in (lead.email or "") else "")
+    host = domain or (lead.email.split("@", 1)[1] if "@" in (lead.email or "") else "") or (account.domain if account is not None else "")
     if host:
         provider = get_enrichment_provider(db, tenant_id)
         found = provider.find_email(
