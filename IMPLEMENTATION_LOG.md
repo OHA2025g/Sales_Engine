@@ -1,5 +1,17 @@
 # Implementation Log
 
+## 2026-09-30 (Dograh caller)
+
+- `VOICE_CONVERSATION_PROVIDER=dograh` sends a gated dial to the Dograh public agent API. Dograh places the call and receives the published sales script. A missing base, key, or agent UUID is not configured and does not fall through to Exotel or Twilio.
+
+## 2026-09-29 (Content briefs)
+
+- Gemini writes the full post and ad. An optional note can steer the angle. Generation reads drafts already sent for that product and asks for a new angle. Alembic `019` stores the note on the draft.
+
+## 2026-09-28 (Content drafts)
+
+- Content drafts LinkedIn, Facebook, and Instagram posts plus one ad from the seller profile and a product description. Gemini writes the copy. A missing key stores `NOT_CONFIGURED` and invents nothing. Publish uses the organic publisher or creates a paused ad and does not activate spend. Alembic `018`.
+
 ## 2026-09-27 (Meta sandbox)
 
 - `META_ADS_MODE=sandbox` calls the Marketing API and uses `META_SANDBOX_AD_ACCOUNT_ID`. Those ads are not served. Organic posts use `META_POSTING_MODE=live` and the Page token. Ads use `META_ACCESS_TOKEN` only.

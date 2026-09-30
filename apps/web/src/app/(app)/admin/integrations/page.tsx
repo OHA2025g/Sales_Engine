@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
-const CREDENTIAL_PROVIDERS = ["linkedin", "meta", "twilio", "vapi", "apify", "exotel", "gemini", "recall", "enrichment"];
+const CREDENTIAL_PROVIDERS = ["linkedin", "meta", "twilio", "vapi", "dograh", "apify", "exotel", "gemini", "recall", "enrichment"];
 
 type IntegrationAccount = {
   id: string;
@@ -182,7 +182,7 @@ function IntegrationsBody() {
             />
             <input
               className="min-w-[12rem] flex-1 rounded-md border border-[var(--line)] bg-white px-2 py-1 text-xs"
-              placeholder='Extra JSON e.g. {"account_id":"..."}'
+              placeholder='Extra JSON. Dograh: {"agent_uuid":"...","api_base":"http://host:port"}'
               value={credExtra}
               onChange={(event) => setCredExtra(event.target.value)}
             />

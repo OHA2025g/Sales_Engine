@@ -18,6 +18,7 @@ from app.models.autonomy import (
     AutopilotSettings,
     EntityAutomationState,
 )
+from app.models.content import ContentDraft, SellerProfile
 from app.models.crm import (
     ICP,
     Account,
@@ -200,6 +201,8 @@ __all__ = [
     "DedupeReview",
     "Campaign",
     "SocialPost",
+    "SellerProfile",
+    "ContentDraft",
     "CampaignMember",
     "AbmPlay",
     "Sequence",

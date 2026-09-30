@@ -149,6 +149,7 @@ class Product(Base, TenantOwnedMixin):
     kind: Mapped[str] = mapped_column(String(40), default="subscription", nullable=False)
     list_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="INR", nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
 
 class Quote(Base, TenantOwnedMixin):

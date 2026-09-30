@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     vapi_assistant_id: str = ""
     vapi_phone_number_id: str = ""
     vapi_webhook_secret: str = ""
+    dograh_api_base: str = ""
+    dograh_api_key: str = ""
+    dograh_agent_uuid: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/integrations/google/callback"
@@ -162,6 +165,10 @@ class Settings(BaseSettings):
     @property
     def vapi_configured(self) -> bool:
         return bool(self.vapi_api_key)
+
+    @property
+    def dograh_configured(self) -> bool:
+        return bool(self.dograh_api_base.strip() and self.dograh_api_key.strip() and self.dograh_agent_uuid.strip())
 
     @property
     def exotel_configured(self) -> bool:

@@ -308,6 +308,7 @@ def seed() -> None:
                 db.flush()
             accounts.append(account)
 
+        set_tenant_context(db, northline.id)
         if db.scalar(select(Account).where(Account.tenant_id == northline.id)) is None:
             db.add(
                 Account(
@@ -318,6 +319,8 @@ def seed() -> None:
                     hq_country="US",
                 )
             )
+            db.flush()
+        set_tenant_context(db, agrayian.id)
 
         contacts_spec = [
             (0, "Lina", "Kapoor", "CIO", "economic_buyer"),
@@ -542,7 +545,9 @@ def seed() -> None:
         from app.services.ml.catalog import ensure_catalog
 
         ensure_catalog(db, tenant_id=agrayian.id, actor_id=admin.id)
+        set_tenant_context(db, northline.id)
         ensure_catalog(db, tenant_id=northline.id, actor_id=northline_admin.id)
+        set_tenant_context(db, agrayian.id)
 
         existing_knowledge = db.scalar(
             select(Prompt).where(Prompt.tenant_id == agrayian.id, Prompt.prompt_key == "copilot")

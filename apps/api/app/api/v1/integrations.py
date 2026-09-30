@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.deps import AuthContext, require_permission
 from app.db.session import get_db
+from app.db.tenant_context import set_tenant_context
 from app.models.ai import AIApproval
 from app.models.crm import Customer, Lead
 from app.models.identity import Tenant
@@ -50,6 +52,7 @@ from app.services.query import get_owned
 from app.services.webhook_routes import demo_routing_token
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=Envelope[list[IntegrationAccountOut]])
@@ -98,6 +101,7 @@ def google_callback(
         return RedirectResponse(f"{dest}?error=oauth_denied")
     try:
         payload = read_state(state)
+        set_tenant_context(db, UUID(str(payload["tenant_id"])))
         token = exchange_code(code)
         upsert_google_account(
             db,
@@ -108,6 +112,7 @@ def google_callback(
         )
         db.commit()
     except Exception:
+        logger.exception("Google OAuth callback failed")
         return RedirectResponse(f"{dest}?error=oauth_failed")
     return RedirectResponse(f"{dest}?connected=google")
 
@@ -320,7 +325,7 @@ def save_provider_credential(
     db: Annotated[Session, Depends(get_db)],
     ctx: Annotated[AuthContext, Depends(require_permission("integrations.write"))],
 ) -> Envelope[IntegrationAccountOut]:
-    allowed = {"linkedin", "meta", "twilio", "vapi", "apify", "exotel", "gemini", "recall", "enrichment"}
+    allowed = {"linkedin", "meta", "twilio", "vapi", "dograh", "apify", "exotel", "gemini", "recall", "enrichment"}
     if body.provider not in allowed:
         raise HTTPException(status_code=422, detail="Provider is not in the tenant credential allow-list")
     row = upsert_token_account(

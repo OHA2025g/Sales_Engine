@@ -3,11 +3,13 @@ import hmac
 import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.core.security import decrypt_credential, encrypt_credential
+from app.db.tenant_context import set_tenant_context as real_set_tenant_context
 from app.services.google_oauth import read_state, sign_state
 from app.services.reply_intelligence import classify_reply
 from tests.conftest import login
@@ -62,6 +64,57 @@ def test_oauth_state_round_trip() -> None:
     payload = read_state(state)
     assert payload["tenant_id"] == str(tenant_id)
     assert payload["user_id"] == str(user_id)
+
+
+def test_google_callback_saves_mailbox_for_the_signed_in_tenant(client: TestClient, monkeypatch) -> None:
+    login_body = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@agrayian.demo", "password": "Agrarian!Demo1"},
+    )
+    assert login_body.status_code == 200, login_body.text
+    user = login_body.json()["data"]["user"]
+    seen: list[str] = []
+
+    def spy(db, tenant_id):
+        seen.append(str(tenant_id))
+        return real_set_tenant_context(db, tenant_id)
+
+    monkeypatch.setattr("app.api.v1.integrations.set_tenant_context", spy)
+    monkeypatch.setattr(
+        "app.api.v1.integrations.exchange_code",
+        lambda code: {
+            "access_token": "test-access",
+            "refresh_token": "test-refresh",
+            "expires_in": 3600,
+            "scope": "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events",
+        },
+    )
+    monkeypatch.setattr("app.services.google_oauth.fetch_email", lambda access_token: "mailbox@example.com")
+    state = sign_state(
+        tenant_id=UUID(str(user["tenant_id"])),
+        user_id=UUID(str(user["id"])),
+        scopes=[
+            "https://www.googleapis.com/auth/gmail.send",
+            "https://www.googleapis.com/auth/calendar.events",
+        ],
+    )
+    response = client.get(
+        "/api/v1/integrations/google/callback",
+        params={"code": "test-code", "state": state},
+        follow_redirects=False,
+    )
+    assert response.status_code == 307
+    assert "connected=google" in response.headers["location"]
+    assert seen == [str(user["tenant_id"])]
+    headers = {"Authorization": f"Bearer {login_body.json()['data']['access_token']}"}
+    rows = client.get("/api/v1/integrations", headers=headers).json()["data"]
+    google = next(row for row in rows if row["provider"] == "google")
+    assert google["status"] == "connected"
+    assert google["provider_account_id"] == "mailbox@example.com"
+    assert google["capabilities"]["gmail"] is True
+    assert google["capabilities"]["calendar"] is True
+    assert "test-access" not in json.dumps(rows)
+    assert "test-refresh" not in json.dumps(rows)
 
 
 def test_send_idempotent_on_double_approve(client: TestClient) -> None:

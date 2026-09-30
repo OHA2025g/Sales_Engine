@@ -80,6 +80,16 @@ async def validation_handler(_request: Request, exc: RequestValidationError) -> 
     )
 
 
+@app.exception_handler(Exception)
+async def unhandled_handler(_request: Request, exc: Exception) -> JSONResponse:
+    if isinstance(exc, HTTPException):
+        raise exc
+    return JSONResponse(
+        status_code=500,
+        content=Envelope(error=ErrorBody(code="internal_error", message="Request failed")).model_dump(),
+    )
+
+
 def _live() -> dict:
     return {
         "status": "ok",

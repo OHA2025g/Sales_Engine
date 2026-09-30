@@ -263,6 +263,7 @@ class ProductIn(APIModel):
     kind: str = "subscription"
     list_price: Decimal = Decimal("0")
     currency: str = "INR"
+    description: str = ""
 
 
 class ProductOut(ProductIn):

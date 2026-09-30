@@ -30,6 +30,14 @@ def provision_env_credentials(db: Session, *, tenant_id: UUID, actor_id: UUID) -
                 },
             )
         )
+    if settings.dograh_configured:
+        specs.append(
+            (
+                "dograh",
+                settings.dograh_api_key,
+                {"agent_uuid": settings.dograh_agent_uuid, "api_base": settings.dograh_api_base},
+            )
+        )
     if settings.vapi_configured:
         specs.append(
             (
@@ -82,7 +90,7 @@ def provision_env_credentials(db: Session, *, tenant_id: UUID, actor_id: UUID) -
 
 
 def channel_modes(db: Session, tenant_id: UUID) -> dict[str, dict[str, str | bool]]:
-    keys = ("email", "calendar", "discovery", "linkedin", "meta", "twilio", "vapi", "exotel", "gemini", "recall", "enrichment")
+    keys = ("email", "calendar", "discovery", "linkedin", "meta", "twilio", "vapi", "dograh", "exotel", "gemini", "recall", "enrichment")
     rows: dict[str, dict[str, str | bool]] = {}
     for key in keys:
         resolved = resolve_channel(db, tenant_id, key)

@@ -113,9 +113,13 @@ def login(
         ip=ip,
         correlation_id=correlation_id,
     )
+    tenant_id = user.tenant_id
+    user_id = user.id
+    email = user.email
     db.commit()
+    set_tenant_context(db, tenant_id)
     db.refresh(user)
-    token = create_access_token(user_id=user.id, tenant_id=user.tenant_id, email=user.email)
+    token = create_access_token(user_id=user_id, tenant_id=tenant_id, email=email)
     return LoginResponse(access_token=token, user=_to_user(db, user)), raw
 
 
@@ -151,8 +155,12 @@ def rotate_refresh(db: Session, raw_token: str, ip: str | None = None, correlati
     row.rotated_at = now
     row.replaced_by = new_row.id
     clear_lookup_context(db)
+    tenant_id = user.tenant_id
+    user_id = user.id
+    email = user.email
     db.commit()
-    token = create_access_token(user_id=user.id, tenant_id=user.tenant_id, email=user.email)
+    set_tenant_context(db, tenant_id)
+    token = create_access_token(user_id=user_id, tenant_id=tenant_id, email=email)
     return LoginResponse(access_token=token, user=_to_user(db, user)), raw
 
 

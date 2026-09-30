@@ -69,7 +69,7 @@ def evaluate_readiness(db: Session, *, tenant_id: UUID) -> dict:
     head = _alembic_head()
     current = _db_revision(db)
     if not current and settings.database_url.startswith("sqlite"):
-        items.append(_item("migrations", "READY", "SQLite create_all path; Alembic head is 017", True))
+        items.append(_item("migrations", "READY", "SQLite create_all path; Alembic head is 019", True))
     elif current == head and head:
         items.append(_item("migrations", "READY", f"Database revision {current}", True))
     else:
@@ -267,7 +267,7 @@ def export_config(db: Session, *, tenant_id: UUID) -> dict:
         },
         "providers": {
             key: resolve_channel(db, tenant_id, key).mode
-            for key in ("email", "calendar", "discovery", "linkedin", "meta", "twilio", "vapi", "exotel", "gemini", "whatsapp")
+            for key in ("email", "calendar", "discovery", "linkedin", "meta", "twilio", "vapi", "dograh", "exotel", "gemini", "whatsapp")
         },
         "flags": flags,
     }

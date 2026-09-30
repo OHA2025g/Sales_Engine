@@ -53,6 +53,13 @@ def load_account_secrets(account: ProviderAccount) -> dict[str, str]:
     return extra
 
 
+def safe_account_secrets(account: ProviderAccount) -> dict[str, str] | None:
+    try:
+        return load_account_secrets(account)
+    except ValueError:
+        return None
+
+
 def resolve_provider(
     db: Session,
     *,
@@ -65,13 +72,22 @@ def resolve_provider(
     settings = get_or_create_settings(db, tenant_id=tenant_id)
     account = _account(db, tenant_id, provider)
     if account is not None:
+        secrets = safe_account_secrets(account)
+        if secrets is None:
+            return ResolvedProvider(
+                "NOT_CONFIGURED",
+                provider,
+                account.id,
+                "stored credential could not be decrypted",
+                False,
+            )
         return ResolvedProvider(
             "LIVE",
             provider,
             account.id,
             "tenant credential",
             False,
-            load_account_secrets(account),
+            secrets,
         )
     if live_mode == "mock":
         return ResolvedProvider("MOCK", provider, None, "explicit mock mode", False)
@@ -84,7 +100,7 @@ def resolve_provider(
             True,
             dict(deployment_secrets or {}),
         )
-    if live_mode in {"live", "sandbox", "gmail", "google", "twilio", "vapi", "apify", "exotel", "gemini", "recall"} and not deployment_configured:
+    if live_mode in {"live", "sandbox", "gmail", "google", "twilio", "vapi", "dograh", "apify", "exotel", "gemini", "recall"} and not deployment_configured:
         return ResolvedProvider("NOT_CONFIGURED", provider, None, "live mode without credentials", False)
     return ResolvedProvider("NOT_CONFIGURED", provider, None, "no tenant credential", False)
 
@@ -143,6 +159,19 @@ def resolve_channel(db: Session, tenant_id: UUID, channel: str) -> ResolvedProvi
                 "account_sid": cfg.twilio_account_sid,
                 "from_number": cfg.twilio_from_number,
                 "twiml_url": cfg.twilio_twiml_url,
+            },
+        )
+    if channel == "dograh":
+        return resolve_provider(
+            db,
+            tenant_id=tenant_id,
+            provider="dograh",
+            live_mode=cfg.voice_conversation_provider,
+            deployment_configured=cfg.dograh_configured,
+            deployment_secrets={
+                "access_token": cfg.dograh_api_key,
+                "agent_uuid": cfg.dograh_agent_uuid,
+                "api_base": cfg.dograh_api_base,
             },
         )
     if channel == "vapi":
@@ -216,6 +245,15 @@ def resolve_channel(db: Session, tenant_id: UUID, channel: str) -> ResolvedProvi
     if channel == "whatsapp":
         account = _account(db, tenant_id, "whatsapp")
         if account:
-            return ResolvedProvider("LIVE", "whatsapp", account.id, "tenant credential", False, load_account_secrets(account))
+            secrets = safe_account_secrets(account)
+            if secrets is None:
+                return ResolvedProvider(
+                    "NOT_CONFIGURED",
+                    "whatsapp",
+                    account.id,
+                    "stored credential could not be decrypted",
+                    False,
+                )
+            return ResolvedProvider("LIVE", "whatsapp", account.id, "tenant credential", False, secrets)
         return ResolvedProvider("NOT_CONFIGURED", "whatsapp", None, "WhatsApp provider is not configured", False)
     return ResolvedProvider("NOT_CONFIGURED", channel, None, "unknown channel", False)

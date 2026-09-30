@@ -300,3 +300,38 @@ def test_ensure_route_does_not_rotate_existing_token(client: TestClient) -> None
         assert row.token_hash == hash_routing_token(original)
     finally:
         db.close()
+
+
+def test_undecryptable_tenant_credential_does_not_500_providers(client: TestClient) -> None:
+    headers = login(client)
+    db = get_session()
+    try:
+        user = _tenant(db)
+        upsert_token_account(
+            db,
+            tenant_id=user.tenant_id,
+            actor_id=user.id,
+            provider="gemini",
+            access_token="temporary-key",
+        )
+        db.commit()
+        row = db.scalar(
+            select(ProviderAccount).where(
+                ProviderAccount.tenant_id == user.tenant_id,
+                ProviderAccount.provider == "gemini",
+                ProviderAccount.deleted_at.is_(None),
+            )
+        )
+        assert row is not None
+        row.access_token_encrypted = "v1:not-a-valid-fernet-token"
+        db.commit()
+        resolved = resolve_channel(db, user.tenant_id, "gemini")
+        assert resolved.mode == "NOT_CONFIGURED"
+        assert "decrypt" in resolved.reason.lower()
+        response = client.get("/api/v1/integrations/providers", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["data"]
+        row.status = "disconnected"
+        db.commit()
+    finally:
+        db.close()

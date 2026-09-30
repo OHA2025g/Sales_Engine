@@ -54,6 +54,13 @@ export type GeneratedPaths = {
   "/api/v1/command-center/work-queue": "get";
   "/api/v1/contacts": "get, post";
   "/api/v1/contacts/{contact_id}": "get, patch";
+  "/api/v1/content/drafts": "get";
+  "/api/v1/content/drafts/{draft_id}": "patch";
+  "/api/v1/content/drafts/{draft_id}/publish": "post";
+  "/api/v1/content/generate": "post";
+  "/api/v1/content/products": "get, post";
+  "/api/v1/content/products/{product_id}": "patch";
+  "/api/v1/content/profile": "get, put";
   "/api/v1/customers": "get";
   "/api/v1/customers/{customer_id}": "get";
   "/api/v1/customers/{customer_id}/churn": "post";
@@ -176,6 +183,8 @@ export type GeneratedPaths = {
   "/api/v1/public/forms/{token}": "get";
   "/api/v1/public/forms/{token}/capture": "post";
   "/api/v1/search": "get";
+  "/api/v1/social/posts": "get, post";
+  "/api/v1/social/status": "get";
   "/api/v1/tasks": "get, post";
   "/api/v1/tasks/{task_id}": "get, patch";
   "/api/v1/webhooks/{provider}/{routing_token}": "post";
@@ -186,7 +195,7 @@ export type GeneratedPaths = {
   "/ready": "get";
 };
 
-export const generatedPathCount = 184;
+export const generatedPathCount = 193;
 export const generatedSchemaNames = [
   "AbmIn",
   "AbmOut",
@@ -229,6 +238,11 @@ export const generatedSchemaNames = [
   "ConnectorOut",
   "ContactIn",
   "ContactOut",
+  "ContentDraftOut",
+  "ContentDraftPatch",
+  "ContentProductIn",
+  "ContentProductOut",
+  "ContentProductPatch",
   "ContractLineOut",
   "ContractOut",
   "ConversationIn",
@@ -273,6 +287,8 @@ export const generatedSchemaNames = [
   "Envelope_CampaignOut_",
   "Envelope_CaptureResult_",
   "Envelope_ContactOut_",
+  "Envelope_ContentDraftOut_",
+  "Envelope_ContentProductOut_",
   "Envelope_ConversationOut_",
   "Envelope_CopilotResponse_",
   "Envelope_Customer360Out_",
@@ -319,7 +335,9 @@ export const generatedSchemaNames = [
   "Envelope_RefreshOut_",
   "Envelope_RenewalOut_",
   "Envelope_SearchOut_",
+  "Envelope_SellerProfileOut_",
   "Envelope_SequenceDetail_",
+  "Envelope_SocialPostOut_",
   "Envelope_TaskOut_",
   "Envelope_TeamOut_",
   "Envelope_TerritoryOut_",
@@ -342,6 +360,8 @@ export const generatedSchemaNames = [
   "Envelope_list_CaptureOut__",
   "Envelope_list_ConnectorOut__",
   "Envelope_list_ContactOut__",
+  "Envelope_list_ContentDraftOut__",
+  "Envelope_list_ContentProductOut__",
   "Envelope_list_ConversationOut__",
   "Envelope_list_CustomerOut__",
   "Envelope_list_DatasetOut__",
@@ -374,6 +394,8 @@ export const generatedSchemaNames = [
   "Envelope_list_SequenceOut__",
   "Envelope_list_SessionOut__",
   "Envelope_list_SignalOut__",
+  "Envelope_list_SocialChannelStatus__",
+  "Envelope_list_SocialPostOut__",
   "Envelope_list_StageMixOut__",
   "Envelope_list_SuccessRow__",
   "Envelope_list_TaskOut__",
@@ -393,6 +415,7 @@ export const generatedSchemaNames = [
   "FlagOut",
   "FlagUpdate",
   "ForecastOut",
+  "GenerateContentIn",
   "GoogleConnectOut",
   "HTTPValidationError",
   "HandoffOut",
@@ -461,6 +484,8 @@ export const generatedSchemaNames = [
   "RollbackIn",
   "SearchHit",
   "SearchOut",
+  "SellerProfileIn",
+  "SellerProfileOut",
   "SequenceDetail",
   "SequenceIn",
   "SequenceOut",
@@ -468,6 +493,9 @@ export const generatedSchemaNames = [
   "SequenceStepOut",
   "SessionOut",
   "SignalOut",
+  "SocialChannelStatus",
+  "SocialPostIn",
+  "SocialPostOut",
   "StageMixOut",
   "SuccessObjectiveOut",
   "SuccessRow",

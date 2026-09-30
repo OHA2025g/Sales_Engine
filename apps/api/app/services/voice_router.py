@@ -10,6 +10,7 @@ from app.models.identity import Tenant
 from app.providers.voice import TranscriptIngest, VoiceHealth, VoiceProvider, VoiceSession
 from app.providers.voice import get_voice_provider as get_process_voice_provider
 from app.providers.voice_conversation import (
+    DograhConversationProvider,
     HumanHandoffConversation,
     MockConversationProvider,
     NotConfiguredConversationProvider,
@@ -82,6 +83,17 @@ def _conversation_from_resolved(kind: str, resolved) -> VoiceConversationProvide
         return MockConversationProvider()
     if resolved.mode != "LIVE":
         return NotConfiguredConversationProvider(kind)
+    if kind == "dograh":
+        if resolved.mode != "LIVE":
+            return NotConfiguredConversationProvider("dograh")
+        secrets = resolved.secrets
+        if not (secrets.get("access_token") and secrets.get("agent_uuid") and secrets.get("api_base")):
+            return NotConfiguredConversationProvider("dograh")
+        return DograhConversationProvider(
+            api_key=secrets.get("access_token") or "",
+            agent_uuid=secrets.get("agent_uuid") or "",
+            api_base=secrets.get("api_base") or "",
+        )
     if kind == "vapi":
         if not resolved.secrets.get("access_token"):
             return NotConfiguredConversationProvider("vapi")
@@ -116,6 +128,9 @@ class VoiceRouter:
         self.script = script
 
     def health(self) -> VoiceHealth:
+        if self.conversation_name == "dograh":
+            conv = self.conversation.health()
+            return VoiceHealth(provider="dograh", is_mock=conv.is_mock, connected=conv.connected, reason=conv.reason)
         tel = self.telephony.health()
         conv = self.conversation.health()
         connected = tel.connected
@@ -123,6 +138,13 @@ class VoiceRouter:
         return VoiceHealth(provider=self.carrier, is_mock=tel.is_mock, connected=connected, reason=reason)
 
     def start_session(self, *, to_number: str, from_label: str = "") -> VoiceSession:
+        if self.conversation_name == "dograh":
+            return self.conversation.attach(
+                session_id="",
+                to_number=to_number,
+                script=self.script,
+                metadata={"from_label": from_label} if from_label else None,
+            )
         session = self.telephony.dial(
             to_number=to_number,
             from_label=from_label,
@@ -150,9 +172,16 @@ class VoiceRouter:
 def compose_voice_provider(db: Session, tenant_id: UUID, destination: str = "") -> VoiceProvider:
     settings_row = get_or_create_settings(db, tenant_id=tenant_id)
     carrier = choose_carrier(phone=destination, override=(settings_row.voice_telephony_override or "").strip().lower())
-    conversation_name = (settings_row.voice_conversation_provider or get_settings().voice_conversation_provider or "vapi").strip().lower()
+    env_conversation = (get_settings().voice_conversation_provider or "").strip().lower()
+    row_conversation = (settings_row.voice_conversation_provider or "").strip().lower()
+    dograh_ready = resolve_channel(db, tenant_id, "dograh").mode == "LIVE"
+    if env_conversation == "dograh" or dograh_ready:
+        conversation_name = "dograh"
+    else:
+        conversation_name = row_conversation or env_conversation or "mock"
     tel_resolved = resolve_channel(db, tenant_id, carrier if carrier in {"exotel", "twilio"} else "twilio")
-    conv_resolved = resolve_channel(db, tenant_id, "vapi" if conversation_name == "vapi" else conversation_name)
+    conv_channel = "vapi" if conversation_name == "vapi" else conversation_name
+    conv_resolved = resolve_channel(db, tenant_id, conv_channel)
     telephony = _telephony_from_resolved(carrier, tel_resolved)
     conversation = _conversation_from_resolved(conversation_name, conv_resolved)
     callback = ""

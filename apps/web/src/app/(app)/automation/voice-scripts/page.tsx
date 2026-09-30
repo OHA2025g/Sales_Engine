@@ -44,7 +44,7 @@ export default function VoiceScriptsPage() {
       <PageHeader
         eyebrow="Voice"
         title="Voice scripts"
-        subtitle="Tenant-owned scripts are reviewable here before Vapi or a human handoff uses them."
+        subtitle="Tenant-owned scripts are reviewable here before Dograh, Vapi, or a human handoff uses them."
       />
       {can("conversations.write") ? (
         <section className="panel mb-6 space-y-3 p-4">

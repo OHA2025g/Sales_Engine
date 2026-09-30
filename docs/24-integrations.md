@@ -35,7 +35,9 @@ Process-level env (not per-tenant OAuth):
 - `LINKEDIN_ADS_MODE=mock|live` plus `LINKEDIN_ACCESS_TOKEN`, `LINKEDIN_AD_ACCOUNT_ID`
 - `META_ADS_MODE=mock|live|sandbox` plus `META_ACCESS_TOKEN` and `META_AD_ACCOUNT_ID`. Sandbox uses `META_SANDBOX_AD_ACCOUNT_ID` and does not serve ads. The Page token is only for organic posts and is not used for ads.
 - Organic posts are separate from ads. `LINKEDIN_POSTING_MODE` and `META_POSTING_MODE` are `mock` or `live`. Live without a post token and page id is `NOT_CONFIGURED` and nothing is published. The ads sandbox does not apply to Page or Instagram posts.
+- Content drafts use the configured Gemini key. Gemini writes the full post and ad from the company profile and product. An optional note can steer the angle. Already-sent drafts are included in the next prompt so the copy is not repeated. A missing key is `NOT_CONFIGURED` and invents no copy. Publish sends a post through the organic publisher or creates a paused ad. It does not activate spend. Instagram still needs a public image URL. The capture link on the seller profile is copied onto the draft with UTM parameters so a form submit becomes an inbound lead.
 - `VOICE_PROVIDER=mock|twilio|vapi` plus Twilio/Vapi vars (`VAPI_ASSISTANT_ID`, `VAPI_PHONE_NUMBER_ID`, `VAPI_WEBHOOK_SECRET`)
+- `VOICE_CONVERSATION_PROVIDER=dograh` uses the local Dograh voice agent as the caller. `DOGRAH_API_BASE`, `DOGRAH_API_KEY`, and `DOGRAH_AGENT_UUID` are required. Sales Engine posts the number and the published sales script to Dograh's public agent API. Dograh places the call. Exotel and Twilio are not dialed for that call. A missing key records not configured and does not place a call.
 
 Live mode without credentials is `NOT_CONFIGURED`. Live HTTP failure never swaps to mock.
 
