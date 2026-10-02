@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
+import { connection } from "next/server";
+import { getApiBase } from "@agrayian/sdk";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -16,10 +18,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  await connection();
+  const apiUrl = getApiBase();
   return (
     <html lang="en">
       <body className={`${sans.variable} font-sans antialiased text-ink bg-canvas`}>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__AGRAYIAN_API_URL=${JSON.stringify(apiUrl)};`,
+          }}
+        />
         <Providers>{children}</Providers>
       </body>
     </html>

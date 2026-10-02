@@ -4,8 +4,26 @@ const LOGIN_PATH = "/api/v1/auth/login";
 const REFRESH_PATH = "/api/v1/auth/refresh";
 const LOGOUT_PATH = "/api/v1/auth/logout";
 
+type ApiWindow = Window & { __AGRAYIAN_API_URL?: string };
+
+function trimBase(value: string): string {
+  return value.trim().replace(/\/$/, "");
+}
+
+function readProcessApiUrl(): string {
+  // Computed key so Next.js does not inline the value at build time.
+  const env = typeof process === "undefined" ? undefined : process["env"];
+  const name = ["NEXT_PUBLIC", "API_URL"].join("_");
+  const value = env?.[name];
+  return typeof value === "string" ? trimBase(value) : "";
+}
+
 export function getApiBase(): string {
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  if (typeof window !== "undefined") {
+    const injected = (window as ApiWindow).__AGRAYIAN_API_URL;
+    if (typeof injected === "string" && injected.trim()) return trimBase(injected);
+  }
+  return readProcessApiUrl() || "http://localhost:8000";
 }
 
 export function readToken(): string | null {

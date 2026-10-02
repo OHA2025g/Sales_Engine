@@ -1,5 +1,6 @@
 "use client";
 
+import { getApiBase } from "@agrayian/sdk";
 import { useParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
@@ -40,7 +41,7 @@ export default function PublicCapturePage() {
     setPending(true);
     setStatus("");
     const data = Object.fromEntries(new FormData(event.currentTarget).entries());
-    const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    const api = getApiBase();
     const response = await fetch(`${api}/api/v1/public/forms/${token}/capture`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

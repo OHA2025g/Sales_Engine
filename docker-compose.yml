@@ -112,8 +112,6 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: http://localhost:${AGRAYIAN_API_PORT:-8000}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:${AGRAYIAN_API_PORT:-8000}

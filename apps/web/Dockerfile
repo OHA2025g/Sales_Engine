@@ -8,8 +8,6 @@ RUN pnpm install --frozen-lockfile || pnpm install
 
 FROM deps AS build
 WORKDIR /repo/apps/web
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN pnpm build
 
 FROM node:22-alpine
@@ -19,6 +17,7 @@ RUN corepack enable
 COPY --from=build /repo /repo
 USER agrayian
 WORKDIR /repo/apps/web
+ENV NEXT_PUBLIC_API_URL=http://localhost:8000
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1:3000 >/dev/null || exit 1
 CMD ["pnpm", "start"]
