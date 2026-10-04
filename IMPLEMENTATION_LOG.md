@@ -1,5 +1,9 @@
 # Implementation Log
 
+## 2026-10-02 (LinkedIn discovery)
+
+- HarvestAPI empty successes now surface the Apify free-plan 10-run limit instead of looking healthy. ICP queries send personas as titles, mapped function IDs, and LinkedIn-friendly locations, and they no longer AND thematic keywords into `searchQuery`.
+
 ## 2026-09-30 (Dograh caller)
 
 - `VOICE_CONVERSATION_PROVIDER=dograh` sends a gated dial to the Dograh public agent API. Dograh places the call and receives the published sales script. A missing base, key, or agent UUID is not configured and does not fall through to Exotel or Twilio.

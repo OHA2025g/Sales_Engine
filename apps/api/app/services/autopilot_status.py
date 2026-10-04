@@ -63,8 +63,8 @@ def provider_health(db: Session | None = None, tenant_id: UUID | None = None) ->
     gemini_resolved = resolve_channel(db, tenant_id, "gemini") if db is not None and tenant_id is not None else None
     gemini_connected = bool(gemini_resolved and gemini_resolved.mode == "LIVE" and gemini_resolved.secrets.get("access_token")) or bool(settings.gemini_api_key)
     discovery = get_lead_discovery_provider(db, tenant_id).health()
-    email = get_email_provider(db, tenant_id).health()
-    calendar = get_calendar_provider(db, tenant_id).health()
+    email = get_email_provider(db, tenant_id, refresh=False).health()
+    calendar = get_calendar_provider(db, tenant_id, refresh=False).health()
     linkedin = get_ads_provider("linkedin", db, tenant_id).health()
     meta = get_ads_provider("instagram", db, tenant_id).health()
     voice = get_voice_provider(db, tenant_id).health()

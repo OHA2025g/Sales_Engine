@@ -1,6 +1,6 @@
 "use client";
 
-import { api, readToken, writeToken } from "@agrayian/sdk";
+import { api, getApiBase, readToken, writeToken } from "@agrayian/sdk";
 import type { TokenUser } from "@agrayian/types";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
@@ -15,6 +15,70 @@ type AuthState = {
 type SessionPayload = { access_token: string; user: TokenUser };
 
 const AuthContext = createContext<AuthState | null>(null);
+const RESTORE_MS = 8000;
+
+let cachedSession: SessionPayload | null | undefined;
+let restoreInFlight: Promise<SessionPayload | null> | null = null;
+
+function clearSessionCache() {
+  cachedSession = undefined;
+  restoreInFlight = null;
+}
+
+async function readJson<T>(response: Response): Promise<T | null> {
+  try {
+    const json = (await response.json()) as { data?: T };
+    return json.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function restoreSession(): Promise<SessionPayload | null> {
+  if (cachedSession !== undefined) return cachedSession;
+  if (restoreInFlight) return restoreInFlight;
+  restoreInFlight = (async () => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), RESTORE_MS);
+    try {
+      const token = readToken();
+      if (token) {
+        const me = await fetch(`${getApiBase()}/api/v1/auth/me`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (me.ok) {
+          const data = await readJson<SessionPayload>(me);
+          if (data?.access_token && data.user) {
+            cachedSession = data;
+            return data;
+          }
+        }
+      }
+      const refreshed = await fetch(`${getApiBase()}/api/v1/auth/refresh`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        credentials: "include",
+        signal: controller.signal,
+      });
+      if (!refreshed.ok) {
+        cachedSession = null;
+        return null;
+      }
+      const data = await readJson<SessionPayload>(refreshed);
+      cachedSession = data?.access_token && data.user ? data : null;
+      return cachedSession;
+    } catch {
+      cachedSession = null;
+      return null;
+    } finally {
+      window.clearTimeout(timer);
+      restoreInFlight = null;
+    }
+  })();
+  return restoreInFlight;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<TokenUser | null>(null);
@@ -22,35 +86,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const generation = useRef(0);
 
   useEffect(() => {
-    const gen = generation.current;
-    let cancelled = false;
-
-    const apply = (res: { data?: SessionPayload | null }) => {
-      if (cancelled || gen !== generation.current || !res.data) return false;
-      writeToken(res.data.access_token);
-      setUser(res.data.user);
-      return true;
-    };
-
-    async function restore() {
-      try {
-        if (readToken()) {
-          if (apply(await api<SessionPayload>("/api/v1/auth/me"))) return;
-        }
-        apply(await api<SessionPayload>("/api/v1/auth/refresh", { method: "POST" }));
-      } catch {
-        if (!cancelled && gen === generation.current) {
-          writeToken(null);
-          setUser(null);
-        }
-      } finally {
-        if (!cancelled && gen === generation.current) setLoading(false);
+    let alive = true;
+    void restoreSession().then((session) => {
+      if (!alive) return;
+      if (session) {
+        writeToken(session.access_token);
+        setUser(session.user);
+      } else {
+        writeToken(null);
+        setUser(null);
       }
-    }
-
-    void restore();
+      setLoading(false);
+    });
     return () => {
-      cancelled = true;
+      alive = false;
     };
   }, []);
 
@@ -62,12 +111,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login: async (email, password) => {
         generation.current += 1;
         writeToken(null);
+        clearSessionCache();
         const res = await api<SessionPayload>("/api/v1/auth/login", {
           method: "POST",
           body: JSON.stringify({ email, password }),
         });
         if (!res.data) throw new Error("Login failed");
         writeToken(res.data.access_token);
+        cachedSession = res.data;
         setUser(res.data.user);
         setLoading(false);
       },
@@ -75,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         generation.current += 1;
         await api("/api/v1/auth/logout", { method: "POST" }).catch(() => undefined);
         writeToken(null);
+        clearSessionCache();
         setUser(null);
       },
     }),

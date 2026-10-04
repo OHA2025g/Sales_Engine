@@ -373,7 +373,9 @@ def _gmail_plain_text(payload: dict) -> str:
     return str(payload.get("snippet") or "")
 
 
-def get_email_provider(db: Session | None = None, tenant_id: UUID | None = None) -> EmailProvider:
+def get_email_provider(
+    db: Session | None = None, tenant_id: UUID | None = None, *, refresh: bool = True
+) -> EmailProvider:
     settings = get_settings()
     mode = (settings.email_provider or "mock").strip().lower()
     if mode == "outlook":
@@ -384,5 +386,5 @@ def get_email_provider(db: Session | None = None, tenant_id: UUID | None = None)
         # Circular: provider_accounts builds a live Gmail client from this module.
         from app.services.provider_accounts import gmail_provider_for_tenant
 
-        return gmail_provider_for_tenant(db, tenant_id)
+        return gmail_provider_for_tenant(db, tenant_id, refresh=refresh)
     return MockEmailProvider()

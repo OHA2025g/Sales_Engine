@@ -29,6 +29,7 @@ from app.services.provider_ops import (
     block_action,
     confirm_action,
     fail_action,
+    get_health_state,
     is_circuit_open,
     record_provider_result,
 )
@@ -369,7 +370,8 @@ def run_discovery(
         empty["reason"] = "Daily discovered-lead cap reached"
         return empty
     if is_circuit_open(db, tenant_id=tenant_id, provider="apify"):
-        empty["reason"] = "Blocked by provider"
+        health_state = get_health_state(db, tenant_id=tenant_id, provider="apify")
+        empty["reason"] = (health_state.last_error_summary if health_state and health_state.last_error_summary else "Blocked by provider")
         empty["provider"] = "apify"
         empty["is_mock"] = False
         return empty
@@ -424,7 +426,12 @@ def run_discovery(
         error=result.reason,
     )
     if result.failure_class:
-        fail_action(action, failure_class=result.failure_class, error=result.reason, retryable=result.failure_class == "TRANSIENT")
+        fail_action(
+            action,
+            failure_class=result.failure_class,
+            error=result.reason,
+            retryable=result.failure_class in {"TRANSIENT", "RATE_LIMIT"},
+        )
     elif not result.connected and not result.is_mock:
         block_action(action, reason=result.reason or "Discovery provider unavailable")
     else:

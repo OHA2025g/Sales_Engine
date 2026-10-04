@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import get_settings
+from app.db.tenant_context import INFO_TENANT
 
 _engine: Engine | None = None
 SessionLocal: sessionmaker[Session] | None = None
@@ -45,7 +46,9 @@ def get_session() -> Session:
     get_engine()
     if SessionLocal is None:
         raise RuntimeError("Database session factory is not initialized")
-    return SessionLocal()
+    session = SessionLocal()
+    session.info.setdefault(INFO_TENANT, "")
+    return session
 
 
 def get_db() -> Generator[Session, None, None]:

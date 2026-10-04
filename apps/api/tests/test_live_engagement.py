@@ -267,6 +267,14 @@ def test_calendar_health_is_mock_not_blocked(client: TestClient) -> None:
     assert "Gmail" not in status["blocked_config"]
 
 
+def test_status_health_does_not_refresh_google(client: TestClient) -> None:
+    headers = login(client)
+    with patch("app.services.provider_accounts.refresh_google_token") as mocked:
+        status = client.get("/api/v1/autonomy/status", headers=headers)
+        assert status.status_code == 200, status.text
+        mocked.assert_not_called()
+
+
 def test_provider_unavailable_blocks_live_mode(client: TestClient) -> None:
     headers = login(client)
     _enable(client, headers)

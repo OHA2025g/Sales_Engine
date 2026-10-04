@@ -1,5 +1,6 @@
 "use client";
 
+import { DograhTestPanel } from "@/components/dograh-test-panel";
 import { PageHeader } from "@/components/page-header";
 import { DeniedState, EmptyState, ErrorState, LoadingState } from "@/components/states";
 import { Badge, Button, Field, Input, Textarea } from "@/components/ui";
@@ -35,8 +36,6 @@ export default function VoiceScriptsPage() {
   });
 
   if (!can("conversations.read")) return <DeniedState />;
-  if (query.isLoading) return <LoadingState label="Reading voice scripts" />;
-  if (query.isError) return <ErrorState message="Voice scripts could not be assembled." />;
   const rows = query.data ?? [];
 
   return (
@@ -46,6 +45,11 @@ export default function VoiceScriptsPage() {
         title="Voice scripts"
         subtitle="Tenant-owned scripts are reviewable here before Dograh, Vapi, or a human handoff uses them."
       />
+      <DograhTestPanel />
+      {query.isLoading ? <LoadingState label="Reading voice scripts" /> : null}
+      {query.isError ? <ErrorState message="Voice scripts could not be assembled." /> : null}
+      {!query.isLoading && !query.isError ? (
+      <>
       {can("conversations.write") ? (
         <section className="panel mb-6 space-y-3 p-4">
           <Field label="Name"><Input value={name} onChange={(event) => setName(event.target.value)} /></Field>
@@ -78,6 +82,8 @@ export default function VoiceScriptsPage() {
           ))}
         </div>
       )}
+      </>
+      ) : null}
     </div>
   );
 }

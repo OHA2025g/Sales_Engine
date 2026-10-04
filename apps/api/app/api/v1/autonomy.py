@@ -5,12 +5,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials
+from jwt import InvalidTokenError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import AuthContext, require_permission
+from app.core.deps import AuthContext, bearer, require_permission
 from app.core.rate_limit import enforce_rate_limit
-from app.db.session import get_db
+from app.core.security import decode_access_token
+from app.db.session import get_db, get_session
+from app.db.tenant_context import set_tenant_context
+from app.models.identity import User
+from app.services.rbac import user_permissions
 from app.models.autonomy import AutonomousRun, AutonomousRunStep
 from app.schemas.autonomy import (
     AutonomyActivityOut,
@@ -54,9 +60,10 @@ def get_settings(
     ctx: Annotated[AuthContext, Depends(require_permission("autonomy.read"))],
 ) -> Envelope[AutopilotSettingsOut]:
     row = get_or_create_settings(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
-    db.commit()
-    db.refresh(row)
-    return Envelope(data=AutopilotSettingsOut.model_validate(row))
+    payload = AutopilotSettingsOut.model_validate(row)
+    if db.new or db.dirty or db.deleted:
+        db.commit()
+    return Envelope(data=payload)
 
 
 @router.patch("/settings", response_model=Envelope[AutopilotSettingsOut])
@@ -77,9 +84,9 @@ def patch_settings(
         after=body.model_dump(exclude_unset=True),
         correlation_id=ctx.correlation_id,
     )
+    payload = AutopilotSettingsOut.model_validate(row)
     db.commit()
-    db.refresh(row)
-    return Envelope(data=AutopilotSettingsOut.model_validate(row))
+    return Envelope(data=payload)
 
 
 @router.get("/status", response_model=Envelope[AutonomyStatusOut])
@@ -228,21 +235,45 @@ def list_runs(
 @router.get("/events")
 async def autonomy_events(
     request: Request,
-    db: Annotated[Session, Depends(get_db)],
-    ctx: Annotated[AuthContext, Depends(require_permission("autonomy.read"))],
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
 ) -> StreamingResponse:
+    if creds is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    db = get_session()
+    try:
+        payload = decode_access_token(creds.credentials)
+        tenant_id = UUID(payload["tenant_id"])
+        set_tenant_context(db, tenant_id)
+        user = db.get(User, UUID(payload["sub"]))
+        if user is None or not user.is_active or user.tenant_id != tenant_id:
+            raise HTTPException(status_code=401, detail="Invalid user")
+        if "autonomy.read" not in user_permissions(db, user):
+            raise HTTPException(status_code=403, detail="Permission denied")
+        actor_id = user.id
+    except InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
+    finally:
+        db.close()
+
     async def stream():
         last = ""
         while not await request.is_disconnected():
-            status = build_status(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
-            payload = status.model_dump(mode="json")
-            encoded = json.dumps({"type": "status", "data": payload}, default=str)
+            def _tick() -> AutonomyStatusOut:
+                tick = get_session()
+                try:
+                    set_tenant_context(tick, tenant_id)
+                    return build_status(tick, tenant_id=tenant_id, actor_id=actor_id)
+                finally:
+                    tick.close()
+
+            status = await asyncio.to_thread(_tick)
+            encoded = json.dumps({"type": "status", "data": status.model_dump(mode="json")}, default=str)
             if encoded != last:
                 yield f"data: {encoded}\n\n"
                 last = encoded
             else:
                 yield "event: heartbeat\ndata: {}\n\n"
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 

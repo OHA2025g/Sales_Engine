@@ -3,6 +3,14 @@ from fastapi.testclient import TestClient
 from tests.conftest import login
 
 
+def test_settings_get_includes_cors_origin(client: TestClient) -> None:
+    headers = login(client)
+    headers["Origin"] = "http://localhost:3000"
+    response = client.get("/api/v1/autonomy/settings", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
 def test_approvals_and_runs_paginate(client: TestClient) -> None:
     headers = login(client)
     approvals = client.get("/api/v1/ai/approvals", headers=headers, params={"page": 1, "page_size": 5})

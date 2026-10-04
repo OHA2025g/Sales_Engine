@@ -149,3 +149,20 @@ def test_rls_blocks_ml_predictions_and_snapshots(rls_session: Session) -> None:
     assert rls_session.scalar(select(MLFeatureSnapshot).where(MLFeatureSnapshot.id == snap.id)) is None
     assert rls_session.scalar(select(Prediction).where(Prediction.id == pred.id)) is None
     rls_session.rollback()
+
+
+def test_rls_refresh_survives_commit(rls_session: Session) -> None:
+    tenants = list(rls_session.scalars(select(Tenant).where(Tenant.is_active.is_(True))).all())
+    if not tenants:
+        pytest.skip("Need a tenant (run seed against the RLS database)")
+    tenant = tenants[0]
+    set_tenant_context(rls_session, tenant.id)
+    name = f"RLS refresh {uuid4()}"
+    row = Account(tenant_id=tenant.id, name=name)
+    rls_session.add(row)
+    rls_session.commit()
+    rls_session.refresh(row)
+    assert row.name == name
+    assert rls_session.scalar(select(Account).where(Account.id == row.id)) is not None
+    rls_session.delete(row)
+    rls_session.commit()

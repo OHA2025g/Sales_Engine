@@ -56,7 +56,7 @@ def get_health_state(db: Session, *, tenant_id: UUID, provider: str) -> Provider
 
 def is_circuit_open(db: Session, *, tenant_id: UUID, provider: str, now: datetime | None = None) -> bool:
     row = get_health_state(db, tenant_id=tenant_id, provider=provider)
-    if row is None or row.state != "DEGRADED" or row.opened_at is None:
+    if row is None or row.opened_at is None or row.state not in {"DEGRADED", "RATE_LIMITED"}:
         return False
     current = now or datetime.now(UTC)
     opened = row.opened_at if row.opened_at.tzinfo else row.opened_at.replace(tzinfo=UTC)
@@ -94,6 +94,7 @@ def record_provider_result(
         row.last_error_summary = redact(error)
         if failure_class == "RATE_LIMIT":
             row.state = "RATE_LIMITED"
+            row.opened_at = row.opened_at or now
         elif failure_class == "AUTHENTICATION":
             row.state = "ERROR"
         elif failure_class == "CONFIGURATION":

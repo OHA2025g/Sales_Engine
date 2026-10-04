@@ -135,16 +135,20 @@ def ensure_fresh_token(db: Session, account: ProviderAccount, *, client_id: str,
     return access_token(account)
 
 
-def gmail_provider_for_tenant(db: Session, tenant_id: UUID) -> EmailProvider:
+def gmail_provider_for_tenant(db: Session, tenant_id: UUID, *, refresh: bool = True) -> EmailProvider:
     account = connected_google_account(db, tenant_id)
     if account is None or not has_scopes(account, ["https://www.googleapis.com/auth/gmail.send"]):
         return DisconnectedGmailProvider()
     settings = get_settings()
-    token = ensure_fresh_token(
-        db,
-        account,
-        client_id=settings.google_client_id,
-        client_secret=settings.google_client_secret,
+    token = (
+        ensure_fresh_token(
+            db,
+            account,
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
+        )
+        if refresh
+        else access_token(account)
     )
     return GmailEmailProvider(
         access_token=token,
@@ -154,16 +158,20 @@ def gmail_provider_for_tenant(db: Session, tenant_id: UUID) -> EmailProvider:
     )
 
 
-def calendar_provider_for_tenant(db: Session, tenant_id: UUID) -> CalendarProvider:
+def calendar_provider_for_tenant(db: Session, tenant_id: UUID, *, refresh: bool = True) -> CalendarProvider:
     account = connected_google_account(db, tenant_id)
     if account is None or not has_scopes(account, ["https://www.googleapis.com/auth/calendar.events"]):
         return DisconnectedGoogleCalendarProvider()
     settings = get_settings()
-    token = ensure_fresh_token(
-        db,
-        account,
-        client_id=settings.google_client_id,
-        client_secret=settings.google_client_secret,
+    token = (
+        ensure_fresh_token(
+            db,
+            account,
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
+        )
+        if refresh
+        else access_token(account)
     )
     return GoogleCalendarProvider(
         access_token=token,

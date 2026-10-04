@@ -120,7 +120,7 @@ export default function LeadsPage() {
         <p className="mb-3 text-sm text-[#e08b7a]">Discovery could not run. No invented people were stored.</p>
       ) : null}
       {discover.data?.data ? (
-        <p className="mb-3 text-sm text-[var(--muted)]">
+        <p className={`mb-3 text-sm ${discover.data.data.created === 0 && discover.data.data.reason ? "text-[#e08b7a]" : "text-[var(--muted)]"}`}>
           {discover.data.data.is_mock ? "Labeled mock. " : ""}
           Created {discover.data.data.created} from {discover.data.data.candidate_count} vendor rows.
           {discover.data.data.reason ? ` ${discover.data.data.reason}` : ""}

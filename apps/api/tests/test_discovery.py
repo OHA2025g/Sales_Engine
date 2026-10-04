@@ -9,6 +9,7 @@ from app.providers.lead_discovery import (
     DiscoveredLead,
     DiscoveryQuery,
     DiscoveryResult,
+    MockLeadDiscoveryProvider,
     map_dataset_items,
 )
 from app.services.discovery import clean_domain, infer_company_domain
@@ -246,6 +247,10 @@ def test_query_builder_uses_icp_filters() -> None:
 
     query = build_discovery_query(FakeICP(), max_items=8)
     assert "CIO" in query.job_titles
+    assert "Chief Information Officer" in query.job_titles
+    assert "information technology" not in query.job_titles
+    assert "13" in query.function_ids
+    assert "India" in query.location_names
     assert "310" in query.seniority_ids
     assert "made-up" not in query.seniority_ids
     assert "4" in query.industry_ids
@@ -253,6 +258,7 @@ def test_query_builder_uses_icp_filters() -> None:
     assert "D" in query.company_headcount
     assert "revenue OS" in query.search_query
     assert "unknown-vertical" in query.search_query
+    assert query.actor_search_query == ""
 
 
 def test_search_actor_requests_email_mode() -> None:
@@ -277,7 +283,41 @@ def test_search_actor_requests_email_mode() -> None:
     body = json.loads(str(seen["body"]))
     assert body["profileScraperMode"] == "Full + email search"
     assert body["maxItems"] == 10
+    assert body["searchQuery"] == "CIO"
     assert result.candidates[0].email == "asha@harbor.example"
+
+
+def test_search_actor_omits_keyword_query_when_titles_exist() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/runs"):
+            seen["body"] = request.read().decode()
+            return httpx.Response(200, json={"data": {"id": "run-1", "status": "SUCCEEDED", "defaultDatasetId": "ds-1"}})
+        return httpx.Response(200, json=[])
+
+    provider = ApifyLeadDiscoveryProvider(
+        token="token",
+        actor_id="harvestapi/linkedin-profile-search",
+        max_items=10,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    result = provider.discover(
+        DiscoveryQuery(
+            search_query="AI transformation",
+            keywords="AI transformation",
+            job_titles=("CIO", "Chief Information Officer"),
+            location_names=("India", "United Arab Emirates"),
+            function_ids=("13",),
+        )
+    )
+    body = json.loads(str(seen["body"]))
+    assert "searchQuery" not in body
+    assert body["currentJobTitles"] == ["CIO", "Chief Information Officer"]
+    assert body["locations"] == ["India", "United Arab Emirates"]
+    assert body["functionIds"] == ["13"]
+    assert result.reason
+    assert result.candidates == []
 
 
 def test_harvest_batch_never_exceeds_10() -> None:
@@ -359,6 +399,35 @@ def test_apify_rate_limit_and_auth_and_timeout() -> None:
     assert timeout_result.failure_class == "TRANSIENT"
 
 
+def test_harvest_free_limit_is_rate_limit() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/runs"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "id": "run-limit",
+                        "status": "SUCCEEDED",
+                        "defaultDatasetId": "ds-empty",
+                        "statusMessage": "free user run limit reached",
+                    }
+                },
+            )
+        return httpx.Response(200, json=[])
+
+    provider = ApifyLeadDiscoveryProvider(
+        token="token",
+        actor_id="harvestapi/linkedin-profile-search",
+        max_items=10,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    result = provider.discover(DiscoveryQuery(search_query="CIO"))
+    assert result.candidates == []
+    assert result.failure_class == "RATE_LIMIT"
+    assert result.connected is False
+    assert "Upgrade the Apify account" in result.reason
+
+
 def test_valid_search_results_persist_provenance(client: TestClient, monkeypatch) -> None:
     class SearchFixture:
         def health(self) -> dict:
@@ -421,7 +490,37 @@ def test_linkedin_url_dedupe(client: TestClient, monkeypatch) -> None:
     assert run.json()["data"]["skipped"].get("duplicate_linkedin") == 1
 
 
-def test_mock_discovery_without_people(client: TestClient) -> None:
+def test_open_circuit_returns_last_vendor_error(client: TestClient, monkeypatch) -> None:
+    class ShouldNotRun:
+        def health(self) -> dict:
+            return {"provider": "apify", "is_mock": False, "connected": True, "reason": ""}
+
+        def discover(self, query) -> DiscoveryResult:
+            raise AssertionError("vendor should not run while the circuit is open")
+
+    class FakeHealth:
+        last_error_summary = "HarvestAPI blocked this Apify free-plan run."
+
+    monkeypatch.setattr("app.services.discovery.get_lead_discovery_provider", lambda *args, **kwargs: ShouldNotRun())
+    monkeypatch.setattr("app.services.discovery.is_circuit_open", lambda *args, **kwargs: True)
+    monkeypatch.setattr("app.services.discovery.get_health_state", lambda *args, **kwargs: FakeHealth())
+    headers = login(client)
+    run = client.post("/api/v1/discovery/run", headers=headers, json={})
+    assert run.status_code == 200
+    body = run.json()["data"]
+    assert body["created"] == 0
+    assert "HarvestAPI" in body["reason"]
+
+
+def test_mock_discovery_without_people(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.discovery.get_lead_discovery_provider",
+        lambda *args, **kwargs: MockLeadDiscoveryProvider(),
+    )
+    monkeypatch.setattr(
+        "app.services.discovery.get_lead_discovery_provider",
+        lambda *args, **kwargs: MockLeadDiscoveryProvider(),
+    )
     headers = login(client)
     health = client.get("/api/v1/discovery/health", headers=headers)
     assert health.status_code == 200

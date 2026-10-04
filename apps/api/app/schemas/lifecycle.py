@@ -235,6 +235,14 @@ class VoiceDialOut(APIModel):
     status: str
 
 
+class DograhBrowserTestOut(APIModel):
+    ready: bool
+    reason: str
+    voice_widget_src: str = ""
+    chat_widget_src: str = ""
+    sales_script: str = ""
+
+
 class MeetingExtractIn(APIModel):
     title: str = "Extracted meeting notes"
     transcript: str

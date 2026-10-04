@@ -54,6 +54,7 @@ from app.schemas.lifecycle import (
     ConversationIn,
     ConversationOut,
     DealInsightOut,
+    DograhBrowserTestOut,
     EmailMessageOut,
     EnrollIn,
     EnrollmentOut,
@@ -103,6 +104,7 @@ from app.services.ads import (
 )
 from app.services.audit import write_audit
 from app.services.customer_intelligence import rebuild_health
+from app.services.dograh_browser import browser_test_from_settings
 from app.services.lifecycle import (
     build_forecast,
     create_quote,
@@ -124,7 +126,7 @@ from app.services.meeting_capture import (
 from app.services.outcomes import mark_renewed
 from app.services.query import get_owned, paginate
 from app.services.voice import extract_meeting_notes, queue_voice_dial
-from app.services.voice_scripts import add_version, create_script, list_scripts, publish_version
+from app.services.voice_scripts import add_version, create_script, current_published_body, list_scripts, publish_version
 
 router = APIRouter(prefix="/lifecycle", tags=["lifecycle"])
 
@@ -521,6 +523,16 @@ def refresh_meeting_capture(
     db.commit()
     db.refresh(capture)
     return Envelope(data=MeetingCaptureOut.model_validate(capture))
+
+
+@router.get("/dograh/browser-test", response_model=Envelope[DograhBrowserTestOut])
+def dograh_browser_test(
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("conversations.read"))],
+) -> Envelope[DograhBrowserTestOut]:
+    script, _version_id = current_published_body(db, ctx.tenant_id)
+    result = browser_test_from_settings(sales_script=script)
+    return Envelope(data=DograhBrowserTestOut.model_validate(result, from_attributes=True))
 
 
 @router.get("/voice-scripts", response_model=Envelope[list[VoiceScriptOut]])

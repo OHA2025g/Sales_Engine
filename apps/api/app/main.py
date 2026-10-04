@@ -80,13 +80,25 @@ async def validation_handler(_request: Request, exc: RequestValidationError) -> 
     )
 
 
+def _cors_error_headers(request: Request) -> dict[str, str]:
+    origin = request.headers.get("origin", "")
+    if origin and origin in settings.cors_origin_list:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Vary": "Origin",
+        }
+    return {}
+
+
 @app.exception_handler(Exception)
-async def unhandled_handler(_request: Request, exc: Exception) -> JSONResponse:
+async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
     if isinstance(exc, HTTPException):
         raise exc
     return JSONResponse(
         status_code=500,
         content=Envelope(error=ErrorBody(code="internal_error", message="Request failed")).model_dump(),
+        headers=_cors_error_headers(request),
     )
 
 

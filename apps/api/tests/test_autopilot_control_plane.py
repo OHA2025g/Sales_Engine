@@ -3,6 +3,15 @@ from fastapi.testclient import TestClient
 from tests.conftest import login
 
 
+def test_settings_get_returns_current_flags(client: TestClient) -> None:
+    headers = login(client)
+    response = client.get("/api/v1/autonomy/settings", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    assert "enabled" in body
+    assert "discovery_enabled" in body
+
+
 def _enable(client: TestClient, headers: dict) -> None:
     client.patch("/api/v1/autonomy/settings", headers=headers, json={"enabled": True})
 

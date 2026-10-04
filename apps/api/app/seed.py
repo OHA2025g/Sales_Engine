@@ -57,6 +57,7 @@ from app.services.lifecycle import (
 )
 from app.services.market import score_market
 from app.services.rbac import PERMISSIONS, ROLE_PERMISSIONS
+from app.seed_showroom import seed_showroom
 from app.services.scoring import score_lead
 from app.services.webhook_routes import demo_routing_token, ensure_route
 
@@ -542,6 +543,7 @@ def seed() -> None:
                     )
 
         _seed_lifecycle(db, agrayian.id, admin.id, seller.id, accounts)
+        seed_showroom(db, tenant_id=agrayian.id, actor_id=admin.id, owner_id=seller.id)
         from app.services.ml.catalog import ensure_catalog
 
         ensure_catalog(db, tenant_id=agrayian.id, actor_id=admin.id)

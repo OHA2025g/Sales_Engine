@@ -96,6 +96,27 @@ def test_circuit_opens_after_consecutive_failures(client: TestClient) -> None:
         db.close()
 
 
+def test_rate_limit_opens_circuit_for_cooldown(client: TestClient) -> None:
+    login(client)
+    db = get_session()
+    try:
+        user = db.scalar(select(User).where(User.email == "admin@agrayian.demo"))
+        record_provider_result(
+            db,
+            tenant_id=user.tenant_id,
+            actor_id=user.id,
+            provider="apify-limit",
+            action="discovery.search",
+            ok=False,
+            failure_class="RATE_LIMIT",
+            error="HarvestAPI blocked this Apify free-plan run.",
+        )
+        db.commit()
+        assert is_circuit_open(db, tenant_id=user.tenant_id, provider="apify-limit")
+    finally:
+        db.close()
+
+
 def test_provider_status_exposes_modes(client: TestClient) -> None:
     headers = login(client)
     status = client.get("/api/v1/autonomy/status", headers=headers)

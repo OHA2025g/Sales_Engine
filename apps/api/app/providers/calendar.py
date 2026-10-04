@@ -311,7 +311,9 @@ class GoogleCalendarProvider:
         return CalendarEventResult(ok=True, provider="google-calendar", is_mock=False, provider_event_id=provider_event_id, reason="Cancelled.")
 
 
-def get_calendar_provider(db: Session | None = None, tenant_id: UUID | None = None) -> CalendarProvider:
+def get_calendar_provider(
+    db: Session | None = None, tenant_id: UUID | None = None, *, refresh: bool = True
+) -> CalendarProvider:
     settings = get_settings()
     mode = (settings.calendar_provider or "mock").strip().lower()
     if mode in {"microsoft", "outlook"}:
@@ -322,7 +324,7 @@ def get_calendar_provider(db: Session | None = None, tenant_id: UUID | None = No
         # Circular: provider_accounts builds a live Calendar client from this module.
         from app.services.provider_accounts import calendar_provider_for_tenant
 
-        return calendar_provider_for_tenant(db, tenant_id)
+        return calendar_provider_for_tenant(db, tenant_id, refresh=refresh)
     return MockCalendarProvider()
 
 
