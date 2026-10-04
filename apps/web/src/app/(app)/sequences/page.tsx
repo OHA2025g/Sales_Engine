@@ -9,6 +9,7 @@ import { labelize } from "@/lib/format";
 import type { Enrollment, Lead, Sequence } from "@/lib/types";
 import { api } from "@agrayian/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -32,6 +33,10 @@ export default function SequencesPage() {
     queryFn: async () => (await api<Lead[]>("/api/v1/leads")).data ?? [],
     enabled: can("leads.read") && open,
   });
+  const activate = useMutation({
+    mutationFn: (sequenceId: string) => api(`/api/v1/workflow/sequences/${sequenceId}/activate`, { method: "POST" }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["sequences"] }),
+  });
   const enroll = useMutation({
     mutationFn: (body: { sequence_id: string; lead_id: string }) =>
       api(`/api/v1/lifecycle/sequences/${body.sequence_id}/enroll`, { method: "POST", body: JSON.stringify({ lead_id: body.lead_id }) }),
@@ -50,9 +55,11 @@ export default function SequencesPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Phase 10"
+        eyebrow="Sales"
         title="Sequences"
-        subtitle="Enroll drafts the first step into Approvals or a task. Nothing is sent from this desk."
+        subtitle="Only an activated journey can run. Drafts stay drafts. A send still waits unless a bounded grant covers it."
+        nextHref="/sequences/builder"
+        nextLabel="Sequence builder"
         actions={can("sequences.write") ? <Button onClick={() => setOpen(true)}>Enroll lead</Button> : null}
       />
       {rows.length === 0 ? (
@@ -61,10 +68,22 @@ export default function SequencesPage() {
         <DataTable
           rows={rows}
           columns={[
-            { key: "name", header: "Sequence", cell: (row) => row.name },
+            { key: "name", header: "Sequence", cell: (row) => <Link href={`/sequences/${row.id}`}>{row.name}</Link> },
             { key: "channel", header: "Channel", cell: (row) => labelize(row.channel) },
             { key: "status", header: "Status", cell: (row) => <Badge>{labelize(row.status)}</Badge> },
             { key: "purpose", header: "Purpose", cell: (row) => labelize(row.purpose) },
+            {
+              key: "activate",
+              header: "Journey",
+              cell: (row) =>
+                can("sequences.write") && row.status === "draft" ? (
+                  <Button variant="line" onClick={() => activate.mutate(row.id)}>
+                    Activate
+                  </Button>
+                ) : (
+                  labelize(row.status)
+                ),
+            },
           ]}
         />
       )}

@@ -40,7 +40,7 @@ export default function RenewalsPage() {
               key: "name",
               header: "Account",
               cell: (row) =>
-                row.customer_id ? <Link href={`/customers/${row.customer_id}`} className="text-brand">{row.account_name || "—"}</Link> : row.account_name || "—",
+                <Link href={`/renewals/${row.id}`} className="text-brand">{row.account_name || "—"}</Link>,
             },
             { key: "arr", header: "Current ARR", cell: (row) => money(row.current_arr) },
             { key: "date", header: "Renewal", cell: (row) => when(row.renewal_date) },

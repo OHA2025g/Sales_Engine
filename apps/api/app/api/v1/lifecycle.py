@@ -783,6 +783,9 @@ def add_quote_line(
         )
     )
     db.flush()
+    quote.version = int(quote.version or 1) + 1
+    if quote.status == "approved":
+        quote.status = "draft"
     recompute_quote(db, quote)
     db.commit()
     db.refresh(quote)

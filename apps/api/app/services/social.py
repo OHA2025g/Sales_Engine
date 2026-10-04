@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.social import SocialPost
-from app.providers.social import MetaSocialPublisher, get_social_publisher, posting_gaps, reaches_provider
+from app.providers.social import (
+    LinkedInSocialPublisher,
+    MetaSocialPublisher,
+    get_social_publisher,
+    posting_gaps,
+    reaches_provider,
+)
 from app.services.audit import write_audit
 
 CHANNELS = ("linkedin", "facebook", "instagram")
@@ -52,8 +58,65 @@ def publish_post(
     link_url: str = "",
     image_url: str = "",
 ) -> SocialPost:
+    from app.services.action_requests import upsert_action_request
+    from app.services.dispatcher import _channel_blocked
+    from app.services.provider_resolve import resolve_provider
+
     normalized = channel.strip().lower()
+    blocked = _channel_blocked(db, tenant_id, "social.publish")
+    if blocked:
+        row = SocialPost(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            channel=normalized,
+            body=body,
+            link_url=link_url,
+            image_url=image_url,
+            status="blocked",
+            provider="",
+            external_id="",
+            is_mock=False,
+            error=blocked,
+        )
+        db.add(row)
+        db.flush()
+        upsert_action_request(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            approval=None,
+            action_type="social.publish",
+            status="blocked",
+            result=blocked,
+            channel=normalized,
+            entity_type="social_post",
+            entity_id=str(row.id),
+            dedupe_key=f"social:{row.id}",
+        )
+        return row
+    settings = get_settings()
+    provider_name = "linkedin-post" if normalized == "linkedin" else "meta-post"
+    live_mode = (settings.linkedin_posting_mode if normalized == "linkedin" else settings.meta_posting_mode) or "mock"
+    resolved = resolve_provider(
+        db,
+        tenant_id=tenant_id,
+        provider=provider_name,
+        live_mode=live_mode.strip().lower(),
+        deployment_configured=False,
+    )
     publisher = get_social_publisher(normalized)
+    if resolved.mode == "LIVE" and resolved.secrets.get("access_token"):
+        if normalized == "linkedin":
+            publisher = LinkedInSocialPublisher(
+                token=resolved.secrets.get("access_token", ""),
+                organization_id=resolved.secrets.get("organization_id", ""),
+            )
+        elif normalized in {"facebook", "instagram"}:
+            publisher = MetaSocialPublisher(
+                page_id=resolved.secrets.get("page_id", ""),
+                page_token=resolved.secrets.get("access_token", ""),
+                instagram_id=resolved.secrets.get("instagram_id", ""),
+            )
     if isinstance(publisher, MetaSocialPublisher):
         result = publisher.publish(body=body, link_url=link_url, image_url=image_url, instagram=normalized == "instagram")
     else:

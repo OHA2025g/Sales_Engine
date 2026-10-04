@@ -89,11 +89,10 @@ def close_won(
         opportunity_id=opp.id,
         status="onboarding",
         lifecycle_state="NEW_CUSTOMER",
-        arr=opp.amount or Decimal("0"),
+        arr=existing.arr if existing else Decimal("0"),
     )
     if existing:
         customer.opportunity_id = opp.id
-        customer.arr = opp.amount or customer.arr
     else:
         db.add(customer)
         db.flush()

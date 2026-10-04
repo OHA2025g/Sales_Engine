@@ -260,11 +260,46 @@ def lifecycle_lanes(db: Session, tenant_id: UUID) -> list[LifecycleLaneOut]:
                 EntityAutomationState.deleted_at.is_(None),
             )
         ) or 0 if lane == "SELL" else 0
+        lane_entities = {
+            "ACQUIRE": "lead",
+            "SELL": "lead",
+            "SUCCEED": "customer",
+            "RETAIN": "customer",
+            "GROW": "customer",
+            "ADVOCATE": "customer",
+        }
         blocked = db.scalar(
             select(func.count()).where(
                 EntityAutomationState.tenant_id == tenant_id,
                 EntityAutomationState.state == "BLOCKED",
+                EntityAutomationState.entity_type == lane_entities[lane],
                 EntityAutomationState.deleted_at.is_(None),
+                EntityAutomationState.last_action.in_(
+                    {
+                        "ACQUIRE": ["enrich", "score", "qualify", "intake_started", "configuration_exception"],
+                        "SELL": ["outreach_blocked", "grant_required", "no_sequence", "reply_drafted", "unsubscribed"],
+                        "SUCCEED": ["onboarding", "handoff"],
+                        "RETAIN": ["renewal", "health"],
+                        "GROW": ["expansion"],
+                        "ADVOCATE": ["advocacy"],
+                    }[lane]
+                ),
+            )
+        ) or 0
+        failed = db.scalar(
+            select(func.count()).where(
+                DomainEvent.tenant_id == tenant_id,
+                DomainEvent.delivery_status == "dead",
+                DomainEvent.event_type.in_(
+                    {
+                        "ACQUIRE": ["lead.created", "lead.qualified"],
+                        "SELL": ["email.sent", "meeting.booked"],
+                        "SUCCEED": ["onboarding.completed", "handoff.created"],
+                        "RETAIN": ["renewal.window_opened", "renewal.prepared"],
+                        "GROW": ["expansion.detected", "upsell.detected", "cross_sell.detected"],
+                        "ADVOCATE": ["advocacy.eligible"],
+                    }[lane]
+                ),
             )
         ) or 0
         completed = db.scalar(
@@ -283,15 +318,14 @@ def lifecycle_lanes(db: Session, tenant_id: UUID) -> list[LifecycleLaneOut]:
                 ),
             )
         ) or 0
-        failed = 0
         rows.append(
             LifecycleLaneOut(
                 lane=lane,
                 running=int(running),
                 waiting=int(waiting),
-                blocked=int(blocked) if lane in {"SUCCEED", "RETAIN"} else 0,
+                blocked=int(blocked),
                 completed_today=int(completed),
-                failed=failed,
+                failed=int(failed),
             )
         )
     _ = timedelta

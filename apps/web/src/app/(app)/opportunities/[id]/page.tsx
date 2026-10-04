@@ -1,5 +1,6 @@
 "use client";
 
+import { Checks, Go, Line, Notice, Panel } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
 import { DeniedState, ErrorState, LoadingState } from "@/components/states";
 import { Timeline } from "@/components/timeline";
@@ -13,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 
 const LOSS_REASONS = [
   "pricing",
@@ -26,7 +28,6 @@ const LOSS_REASONS = [
   "no_decision",
   "other",
 ];
-import { useForm } from "react-hook-form";
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ id: string }>();
@@ -91,6 +92,8 @@ export default function OpportunityDetailPage() {
         eyebrow="Deal room"
         title={opp.name}
         subtitle={`${labelize(opp.stage)} · ${money(opp.amount)} · ${opp.probability}%`}
+        nextHref="/deals"
+        nextLabel="Deal risk"
         actions={
           <>
             {can("opportunities.write") ? (
@@ -127,6 +130,62 @@ export default function OpportunityDetailPage() {
           </>
         }
       />
+      <Notice
+        title="Next expected outcome: approved proposal"
+        body="Commercial authorization and delivery readiness must precede acceptance. Approval is not delivery."
+      />
+      <div className="phase-nav">
+        {["Qualification", "Discovery", "Solution", "Proposal", "Negotiation", "Accepted"].map((phase) => {
+          const current =
+            opp.stage === "closed_won"
+              ? "Accepted"
+              : opp.stage === "discovery" || opp.stage === "demo"
+                ? "Discovery"
+                : opp.stage === "proposal"
+                  ? "Proposal"
+                  : opp.stage === "negotiation"
+                    ? "Negotiation"
+                    : "Qualification";
+          return (
+            <span key={phase} className={phase === current ? "active" : ""}>
+              {phase}
+            </span>
+          );
+        })}
+      </div>
+      <div className="ds-grid wide">
+        <Panel title={opp.name}>
+          <div className="between">
+            <div>
+              <div className="upper">{labelize(opp.stage)}</div>
+              <div className="stat-value num">{money(opp.amount)}</div>
+              <div className="small muted">{opp.probability}% stage probability · before a new discount</div>
+            </div>
+            <Badge tone="blue">{labelize(opp.stage)}</Badge>
+          </div>
+          <Line label="Expected close" value={opp.expected_close || "Not recorded"} />
+          <Line label="Next agreed step" value={opp.next_step || "Not recorded"} />
+          <Line label="Forecast category" value="Derived from stage, not a separate forecast write" />
+          <div className="ds-flex" style={{ marginTop: 20 }}>
+            <Go href="/commercial/proposal" primary>Proposal</Go>
+            <Go href="/commercial">Quote</Go>
+            <Go href="/meetings">Meeting evidence</Go>
+          </div>
+        </Panel>
+        <Panel title="Stage evidence and decisions">
+          <Checks
+            items={[
+              { label: "Amount recorded", ok: Number(opp.amount) > 0 },
+              { label: "Next step recorded", ok: Boolean(opp.next_step) },
+              { label: "Expected close recorded", ok: Boolean(opp.expected_close) },
+              { label: "Delivery owner confirms commitments", ok: false },
+            ]}
+          />
+          <div style={{ marginTop: 16 }}>
+            <Go href="/commercial">Review quote terms</Go>
+          </div>
+        </Panel>
+      </div>
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="panel p-5">
           <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">Motion</p>
@@ -138,6 +197,9 @@ export default function OpportunityDetailPage() {
             {opp.loss_reason ? <li className="flex justify-between"><span className="text-[var(--muted)]">Lost</span>{opp.loss_reason}</li> : null}
           </ul>
           <p className="mt-5 text-sm leading-6 text-[var(--muted)]">Next step: {opp.next_step || "not set"}</p>
+          <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+            Moving into proposal needs recorded qualification or meeting evidence. A missing fact blocks the stage instead of inventing progress.
+          </p>
           <Link href={`/accounts/${opp.account_id}`} className="mt-4 inline-block text-sm text-brand">
             Open account 360
           </Link>

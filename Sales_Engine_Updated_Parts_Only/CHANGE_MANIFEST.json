@@ -1,0 +1,24 @@
+{
+  "baselineDesignCommit": "d69804dd8e2f68799b8d883d1e46cc0eacc3909d",
+  "updatedDesignCommit": "4bac338ba7bef08becdc8f99320495eb582c9164",
+  "patchFormat": "Unified diff with zero context; use --unidiff-zero",
+  "newFile": "prototype/forms.js",
+  "modifiedFiles": [
+    {
+      "path": "prototype/index.html",
+      "beforeSHA256": "54ac03c56f6744a4c82e5ffa0bbf0b757f5f327ce4663bd00f88a4897100b5ec",
+      "afterSHA256": "d65eac2c149b733078d51542762315ab345a5a9aa45e8aca5b26726bf50d2243"
+    },
+    {
+      "path": "prototype/app.js",
+      "beforeSHA256": "ecbcf59da1992bc2c63b44b0f3d747fce659b82381ab7152fd94840b9ef7d15f",
+      "afterSHA256": "8a302a10b725cca36a14602aaa4af11171ed25c61ae94c2128f9b0a3cdc8c270"
+    },
+    {
+      "path": "prototype/style.css",
+      "beforeSHA256": "b713208478223ddac2456046c3f89005b27a061c8797bd102966b796f6b2b987",
+      "afterSHA256": "6535a4bb389825117d90e9a317bb2c6c32137e171dbf332b2b1cd0f052637b44"
+    }
+  ],
+  "newFileSHA256": "6ac0df7709369a07740007e744358ebc1fc20615f3a7888cc5440243ab91b171"
+}

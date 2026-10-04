@@ -375,7 +375,7 @@ export default function AutopilotRunsPage() {
             <article key={row.id} className="panel p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-navy">{row.summary || "Run stored."}</p>
+                  <Link href={`/automation/runs/${row.id}`} className="text-sm font-semibold text-ink">{row.summary || "Run stored."}</Link>
                   <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
                     {labelize(row.trigger)} · {row.workflow || "cycle"} · {row.finished_at ? new Date(row.finished_at).toLocaleString() : "in progress"}
                   </p>

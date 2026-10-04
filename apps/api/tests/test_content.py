@@ -200,6 +200,12 @@ def test_ad_publish_stays_paused(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr("app.services.content.get_ads_provider", lambda *_args, **_kwargs: _Ads())
     headers = login(client)
     product_id = _ready(client, headers)
+    planned = client.post(
+        "/api/v1/workflow/campaign-plans",
+        headers=headers,
+        json={"name": "LinkedIn launch", "channel": "linkedin", "budget": "500", "product_id": product_id, "status": "approved"},
+    )
+    assert planned.status_code == 200, planned.text
     created = client.post("/api/v1/content/generate", headers=headers, json={"product_id": product_id, "ad_channel": "linkedin"})
     draft = next(row for row in created.json()["data"] if row["kind"] == "ad")
     published = client.post(f"/api/v1/content/drafts/{draft['id']}/publish", headers=headers)

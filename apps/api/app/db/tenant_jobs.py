@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from uuid import UUID
 
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.db.tenant_context import clear_tenant_context, set_tenant_context
 from app.models.identity import Tenant
 
+logger = logging.getLogger(__name__)
+
 Callback = Callable[[UUID], int | None]
 
 
@@ -15,7 +18,14 @@ def run_per_tenant(db: Session, callback: Callback) -> int:
     tenant_ids = list(db.scalars(select(Tenant.id).where(Tenant.is_active.is_(True))).all())
     total = 0
     for tenant_id in tenant_ids:
-        set_tenant_context(db, tenant_id)
-        total += callback(tenant_id) or 0
+        nested = db.begin_nested()
+        try:
+            set_tenant_context(db, tenant_id)
+            total += callback(tenant_id) or 0
+            nested.commit()
+        except Exception:
+            logger.exception("tenant job failed for %s", tenant_id)
+            nested.rollback()
+            continue
     clear_tenant_context(db)
     return total

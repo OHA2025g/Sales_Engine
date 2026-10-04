@@ -22,6 +22,7 @@ from app.api.v1 import (
     search,
     social,
     webhooks,
+    workflow,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -46,3 +47,4 @@ api_router.include_router(post_sale.router)
 api_router.include_router(ml.router)
 api_router.include_router(pilot.router)
 api_router.include_router(providers.router)
+api_router.include_router(workflow.router)

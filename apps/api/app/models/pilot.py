@@ -63,6 +63,7 @@ class SchedulerHeartbeat(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     last_beat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     detail: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    leader_token: Mapped[str] = mapped_column(String(64), default="", nullable=False)
 
 
 class ReadinessNotification(Base, TenantOwnedMixin):

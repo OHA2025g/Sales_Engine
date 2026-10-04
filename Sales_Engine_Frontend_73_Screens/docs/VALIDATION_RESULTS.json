@@ -1,0 +1,20 @@
+{
+  "screens": 73,
+  "originalPages": 49,
+  "coveredOriginalPages": 49,
+  "workflowAdditions": 24,
+  "internalLinksChecked": 1816,
+  "interactionChecks": [
+    "quote authorization / delivery separation",
+    "version invalidation",
+    "paused execution guard",
+    "meeting qualification handoff",
+    "acceptance to onboarding",
+    "ordered onboarding milestones",
+    "record search and empty result",
+    "five-step launch setup",
+    "role-based command centre"
+  ],
+  "structuredTools": "Registration, valid-input state read-back, and invalid-input rejection verified in a simulated DOM; supported-browser validation unavailable.",
+  "rendering": "DOM rendering and structure verified; visual browser and responsive rendering are not verified."
+}

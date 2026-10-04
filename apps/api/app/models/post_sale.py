@@ -35,6 +35,9 @@ class ContractLine(Base, TenantOwnedMixin):
     quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     unit_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     line_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    billing_kind: Mapped[str] = mapped_column(String(20), default="recurring", nullable=False)
+    annualized_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    source_opportunity_id: Mapped[UUID | None] = mapped_column(ForeignKey("opportunities.id"), nullable=True)
 
 
 class HandoffPackage(Base, TenantOwnedMixin):

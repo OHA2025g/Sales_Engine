@@ -1,0 +1,96 @@
+export type ScreenCopy = {
+  id: string;
+  title: string;
+  description: string;
+  action: string;
+  nextHref: string | null;
+  nextLabel: string;
+  route: string;
+  detail: boolean;
+};
+
+export const SCREEN_COPY: ScreenCopy[] = [
+  { id: "home", title: "Overview", description: "Supervise progress, decisions, and exceptions.", action: "Review decisions", nextHref: "/automation/approvals", nextLabel: "Decision inbox", route: "/", detail: false },
+  { id: "flow", title: "Revenue journey", description: "Follow the connected lifecycle and its accountable handoffs.", action: "Open active journey", nextHref: "/automation/runs/[id]", nextLabel: "Inbound journey · Meridian", route: "/flow", detail: false },
+  { id: "strategy", title: "Revenue strategy", description: "Set the target, offer, audience, and operating boundaries.", action: "Edit strategy", nextHref: "/icps", nextLabel: "Ideal customer profiles", route: "/strategy", detail: false },
+  { id: "icps", title: "Ideal customer profiles", description: "Define fit and qualification evidence for each segment.", action: "New profile", nextHref: "/market", nextLabel: "Market overview", route: "/icps", detail: false },
+  { id: "market", title: "Market overview", description: "Discover relevant account opportunities from fresh evidence.", action: "Review signals", nextHref: "/market/signals", nextLabel: "Signal inbox", route: "/market", detail: false },
+  { id: "market-detail", title: "Account intelligence", description: "Understand buying context before choosing an account journey.", action: "Create campaign brief", nextHref: "/campaigns/[id]", nextLabel: "Enterprise AI · campaign", route: "/market/[id]", detail: true },
+  { id: "signals", title: "Signal inbox", description: "Assess evidence relevance, freshness, and source confidence.", action: "Add source", nextHref: "/market/triggers", nextLabel: "Signal triggers", route: "/market/signals", detail: false },
+  { id: "triggers", title: "Signal triggers", description: "Turn trusted evidence into bounded workflow recommendations.", action: "New trigger", nextHref: "/campaigns", nextLabel: "Campaigns", route: "/market/triggers", detail: false },
+  { id: "campaigns", title: "Campaigns", description: "Connect audience, assets, budget, and qualified pipeline.", action: "New campaign", nextHref: "/campaigns/[id]", nextLabel: "Enterprise AI · campaign", route: "/campaigns", detail: false },
+  { id: "campaign-detail", title: "Enterprise AI · campaign", description: "One approved plan for content, distribution, and acquisition.", action: "Review launch", nextHref: "/content", nextLabel: "Content studio", route: "/campaigns/[id]", detail: true },
+  { id: "content", title: "Content studio", description: "Prepare grounded campaign assets with reviewable claims.", action: "Create brief", nextHref: "/content/[id]", nextLabel: "Content editor", route: "/content", detail: false },
+  { id: "content-editor", title: "Content editor", description: "Review the asset, evidence, and channel before scheduling.", action: "Schedule asset", nextHref: "/calendar", nextLabel: "Marketing calendar", route: "/content/[id]", detail: true },
+  { id: "social", title: "Social publishing", description: "Schedule approved posts and inspect publication outcomes.", action: "New post", nextHref: "/calendar", nextLabel: "Marketing calendar", route: "/social", detail: false },
+  { id: "calendar", title: "Marketing calendar", description: "Coordinate campaign assets and channel delivery.", action: "Schedule content", nextHref: "/acquisition", nextLabel: "Inbound acquisition", route: "/calendar", detail: false },
+  { id: "acquisition", title: "Inbound acquisition", description: "Capture attributed demand and hand it to the right journey.", action: "New capture form", nextHref: "/leads", nextLabel: "Leads", route: "/acquisition", detail: false },
+  { id: "leads", title: "Leads", description: "Qualify, route, and progress every eligible lead.", action: "Add lead", nextHref: "/leads/[id]", nextLabel: "Lina Shah · lead", route: "/leads", detail: false },
+  { id: "lead-detail", title: "Lina Shah · lead", description: "One owner, one next step, and a visible path into a qualified deal.", action: "Open conversation", nextHref: "/conversations", nextLabel: "Conversations", route: "/leads/[id]", detail: true },
+  { id: "accounts", title: "Accounts", description: "Coordinate contacts, opportunities, and customer context.", action: "Add account", nextHref: "/accounts/[id]", nextLabel: "Meridian Logistics", route: "/accounts", detail: false },
+  { id: "account-detail", title: "Meridian Logistics", description: "Keep account evidence and relationship progress together.", action: "View deal room", nextHref: "/opportunities/[id]", nextLabel: "Meridian · deal room", route: "/accounts/[id]", detail: true },
+  { id: "contacts", title: "Contacts", description: "Track stakeholders, eligibility, and relationship context.", action: "Add contact", nextHref: "/contacts/[id]", nextLabel: "Lina Shah · contact", route: "/contacts", detail: false },
+  { id: "contact-detail", title: "Lina Shah · contact", description: "See stakeholder role, permitted channels, and linked work.", action: "Open lead", nextHref: "/leads/[id]", nextLabel: "Lina Shah · lead", route: "/contacts/[id]", detail: true },
+  { id: "imports", title: "Import centre", description: "Validate records and eligibility before activating a journey.", action: "Upload CSV", nextHref: "/leads", nextLabel: "Leads", route: "/imports", detail: false },
+  { id: "sequences", title: "Outreach sequences", description: "Only activated, versioned sequences may execute.", action: "Build sequence", nextHref: "/sequences/builder", nextLabel: "Sequence builder", route: "/sequences", detail: false },
+  { id: "sequence-builder", title: "Sequence builder", description: "Compose a bounded journey with waits, replies, and stop conditions.", action: "Validate sequence", nextHref: "/policies", nextLabel: "Autonomy & policies", route: "/sequences/builder", detail: false },
+  { id: "conversations", title: "Conversations", description: "Resolve replies while the journey keeps its context.", action: "Draft response", nextHref: "/meetings", nextLabel: "Meetings", route: "/conversations", detail: false },
+  { id: "meetings", title: "Meetings", description: "Prepare, record outcomes, and hand off qualified opportunities.", action: "Book meeting", nextHref: "/meetings/[id]", nextLabel: "Meridian · discovery", route: "/meetings", detail: false },
+  { id: "meeting-detail", title: "Meridian · discovery", description: "Turn the conversation into verified qualification and next steps.", action: "Confirm outcome", nextHref: "/opportunities/[id]", nextLabel: "Meridian · deal room", route: "/meetings/[id]", detail: true },
+  { id: "voice", title: "Voice workspace", description: "Prepare approved scripts and review call readiness.", action: "Review script", nextHref: "/meetings/[id]", nextLabel: "Meridian · discovery", route: "/automation/voice-scripts", detail: false },
+  { id: "pipeline", title: "Opportunity pipeline", description: "Progress deals using evidence and accountable next steps.", action: "New opportunity", nextHref: "/opportunities/[id]", nextLabel: "Meridian · deal room", route: "/pipeline", detail: false },
+  { id: "opportunity-detail", title: "Meridian · deal room", description: "Coordinate stakeholders, stage evidence, and the commercial decision.", action: "Prepare proposal", nextHref: "/commercial/quotes/[id]", nextLabel: "Meridian · quote Q-1042", route: "/opportunities/[id]", detail: true },
+  { id: "deals", title: "Deal risk", description: "Prioritize slipped dates, missing next steps, and stalled decisions.", action: "Review highest risk", nextHref: "/opportunities/[id]", nextLabel: "Meridian · deal room", route: "/deals", detail: false },
+  { id: "tasks", title: "Work queue", description: "A ranked queue of assigned work and workflow exceptions.", action: "Create task", nextHref: "/tasks/[id]", nextLabel: "Confirm buyer success criteria", route: "/tasks", detail: false },
+  { id: "task-detail", title: "Confirm buyer success criteria", description: "Resolve the owned blocker and resume the right workflow step.", action: "Complete task", nextHref: "/opportunities/[id]", nextLabel: "Meridian · deal room", route: "/tasks/[id]", detail: true },
+  { id: "commercial", title: "Quotes & catalog", description: "Translate the agreed solution into authorized commercial terms.", action: "New quote", nextHref: "/commercial/quotes/[id]", nextLabel: "Meridian · quote Q-1042", route: "/commercial", detail: false },
+  { id: "quote-detail", title: "Meridian · quote Q-1042", description: "Review pricing, approval scope, and the exact customer-facing version.", action: "Request approval", nextHref: "/automation/approvals", nextLabel: "Decision inbox", route: "/commercial/quotes/[id]", detail: true },
+  { id: "proposal", title: "Proposal workspace", description: "Ground the offer in agreed outcomes and permitted commitments.", action: "Preview proposal", nextHref: "/commercial/quotes/[id]", nextLabel: "Meridian · quote Q-1042", route: "/commercial/proposal", detail: false },
+  { id: "contracts", title: "Contracts", description: "Link acceptance evidence, terms, and customer handoff.", action: "New contract", nextHref: "/commercial/contracts/[id]", nextLabel: "Meridian · contract", route: "/commercial/contracts", detail: false },
+  { id: "contract-detail", title: "Meridian · contract", description: "Verify acceptance before activating the delivery lifecycle.", action: "Start onboarding", nextHref: "/onboarding", nextLabel: "Onboarding", route: "/commercial/contracts/[id]", detail: true },
+  { id: "customers", title: "Customer portfolio", description: "Deliver value, resolve risk, and retain the relationship.", action: "Open customer", nextHref: "/customers/[id]", nextLabel: "Cedar Health · customer", route: "/customers", detail: false },
+  { id: "customer-detail", title: "Cedar Health · customer", description: "One customer record for delivery, health, value, and renewal.", action: "Open recovery plan", nextHref: "/success", nextLabel: "Customer success", route: "/customers/[id]", detail: true },
+  { id: "onboarding", title: "Onboarding", description: "Move accepted business into an accountable delivery plan.", action: "Create plan", nextHref: "/customers/[id]", nextLabel: "Cedar Health · customer", route: "/onboarding", detail: false },
+  { id: "success", title: "Customer success", description: "Act on fresh usage, support, and delivery evidence.", action: "Review risk", nextHref: "/customers/[id]", nextLabel: "Cedar Health · customer", route: "/success", detail: false },
+  { id: "renewals", title: "Renewals", description: "Prepare value evidence and authorized terms before the renewal window.", action: "Prepare renewal", nextHref: "/renewals/[id]", nextLabel: "Cedar · renewal plan", route: "/renewals", detail: false },
+  { id: "renewal-detail", title: "Cedar · renewal plan", description: "Connect the value review, commercial decision, and next contract.", action: "Prepare value review", nextHref: "/commercial/quotes/[id]", nextLabel: "Meridian · quote Q-1042", route: "/renewals/[id]", detail: true },
+  { id: "expansion", title: "Expansion", description: "Recommend growth only when customer evidence supports it.", action: "Review opportunity", nextHref: "/opportunities/[id]", nextLabel: "Meridian · deal room", route: "/expansion", detail: false },
+  { id: "advocacy", title: "Advocacy", description: "Invite reference and referral participation with clear permission.", action: "Prepare request", nextHref: "/customers/[id]", nextLabel: "Cedar Health · customer", route: "/advocacy", detail: false },
+  { id: "runs", title: "Execution centre", description: "Inspect what is progressing, waiting, and recoverable.", action: "Open journey", nextHref: "/automation/runs/[id]", nextLabel: "Inbound journey · Meridian", route: "/automation/runs", detail: false },
+  { id: "run-detail", title: "Inbound journey · Meridian", description: "Every step exposes its evidence, policy, result, and recovery path.", action: "Continue demo journey", nextHref: "/leads/[id]", nextLabel: "Lina Shah · lead", route: "/automation/runs/[id]", detail: true },
+  { id: "approvals", title: "Decision inbox", description: "Authorize the exact action and inspect what happens afterwards.", action: "Review decision", nextHref: "/commercial/quotes/[id]", nextLabel: "Meridian · quote Q-1042", route: "/automation/approvals", detail: false },
+  { id: "playbooks", title: "Journey playbooks", description: "Activate versioned workflows with tested triggers and guards.", action: "Build playbook", nextHref: "/playbooks/builder", nextLabel: "Playbook builder", route: "/playbooks", detail: false },
+  { id: "playbook-builder", title: "Playbook builder", description: "Define the trigger, eligibility, branch, and accountable handoff.", action: "Validate playbook", nextHref: "/automation/runs", nextLabel: "Execution centre", route: "/playbooks/builder", detail: false },
+  { id: "policies", title: "Autonomy & policies", description: "Set scoped grants, channel boundaries, and escalation rules.", action: "Save policy", nextHref: "/automation/runs", nextLabel: "Execution centre", route: "/policies", detail: false },
+  { id: "forecast", title: "Revenue forecast", description: "Reconcile the period forecast to contributing opportunities.", action: "Review pipeline", nextHref: "/pipeline", nextLabel: "Opportunity pipeline", route: "/forecast", detail: false },
+  { id: "attribution", title: "Campaign attribution", description: "Trace qualified pipeline and accepted business to campaign sources.", action: "View campaign", nextHref: "/campaigns/[id]", nextLabel: "Enterprise AI · campaign", route: "/insights/attribution", detail: false },
+  { id: "retention", title: "Customer cohorts", description: "Calculate retention from comparable contract cohorts.", action: "Review renewals", nextHref: "/renewals", nextLabel: "Renewals", route: "/insights/retention", detail: false },
+  { id: "automation", title: "Automation performance", description: "Measure completed actions, interventions, reliability, and cost.", action: "Inspect executions", nextHref: "/automation/runs", nextLabel: "Execution centre", route: "/insights/automation", detail: false },
+  { id: "intelligence", title: "AI research workspace", description: "Ask a contextual question and inspect grounded recommendations.", action: "Ask copilot", nextHref: "/opportunities/[id]", nextLabel: "Meridian · deal room", route: "/intelligence", detail: false },
+  { id: "company", title: "Company & workspace", description: "Maintain the offer, identity, region, and operating defaults.", action: "Save workspace", nextHref: "/setup", nextLabel: "Revenue launch", route: "/settings/company", detail: false },
+  { id: "setup", title: "Revenue launch", description: "Connect strategy, channels, ownership, and authorization before activation.", action: "Continue setup", nextHref: "/strategy", nextLabel: "Revenue strategy", route: "/setup", detail: false },
+  { id: "knowledge", title: "Knowledge library", description: "Manage approved product facts, claims, and policy sources.", action: "Add document", nextHref: "/content/[id]", nextLabel: "Content editor", route: "/knowledge", detail: false },
+  { id: "models", title: "AI & model governance", description: "Inspect model purpose, evidence, readiness, and operating limits.", action: "Review configuration", nextHref: "/admin/pilot", nextLabel: "Operational readiness", route: "/models", detail: false },
+  { id: "integrations", title: "Connections", description: "Connect tenant-owned channels and inspect their capabilities.", action: "Add connection", nextHref: "/setup", nextLabel: "Revenue launch", route: "/admin/integrations", detail: false },
+  { id: "users", title: "People & access", description: "Invite people and manage accountable access.", action: "Invite member", nextHref: "/admin/teams", nextLabel: "Teams & ownership", route: "/admin/users", detail: false },
+  { id: "teams", title: "Teams & ownership", description: "Define territories, capacity, and escalation ownership.", action: "Create team", nextHref: "/policies", nextLabel: "Autonomy & policies", route: "/admin/teams", detail: false },
+  { id: "flags", title: "Feature controls", description: "Manage release controls separately from business authorization.", action: "Save controls", nextHref: "/admin/pilot", nextLabel: "Operational readiness", route: "/admin/flags", detail: false },
+  { id: "audit", title: "Audit trail", description: "Trace who changed facts, granted authorization, and executed actions.", action: "Review event", nextHref: "/automation/runs/[id]", nextLabel: "Inbound journey · Meridian", route: "/admin/audit", detail: false },
+  { id: "pilot", title: "Operational readiness", description: "Activate only the journeys supported by current verification evidence.", action: "Review checks", nextHref: "/setup", nextLabel: "Revenue launch", route: "/admin/pilot", detail: false },
+  { id: "security", title: "Security & data", description: "Configure identity, session, audit, and data lifecycle requirements.", action: "Save settings", nextHref: "/admin/pilot", nextLabel: "Operational readiness", route: "/security", detail: false },
+  { id: "design-system", title: "Design system", description: "Shared foundations and component states for implementation.", action: "View all screens", nextHref: "/screens", nextLabel: "All page designs", route: "/design-system", detail: false },
+  { id: "screen-index", title: "All page designs", description: "Browse every original page and the added workflow screens.", action: "Explore revenue flow", nextHref: "/flow", nextLabel: "Revenue journey", route: "/screens", detail: false },
+  { id: "coming-soon", title: "Capability availability", description: "Clearly distinguish designed journeys from available capabilities.", action: "View connections", nextHref: "/admin/integrations", nextLabel: "Connections", route: "/coming-soon/[engine]", detail: true },
+  { id: "login", title: "Sign in", description: "Secure entry into the revenue workspace.", action: "Enter demo", nextHref: "/", nextLabel: "Overview", route: "/login", detail: false },
+  { id: "capture", title: "Public capture form", description: "Turn an inbound request into an attributed, owned lead.", action: "Submit demo request", nextHref: "/leads/[id]", nextLabel: "Lina Shah · lead", route: "/capture/[token]", detail: true },
+];
+
+export function screenForPath(pathname: string): ScreenCopy | null {
+  const exact = SCREEN_COPY.find((screen) => screen.route === pathname);
+  if (exact) return exact;
+  const ranked = SCREEN_COPY.filter((screen) => screen.detail)
+    .map((screen) => ({ screen, prefix: screen.route.split("[")[0] ?? "" }))
+    .filter((item) => item.prefix.length > 1 && pathname.startsWith(item.prefix))
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+  return ranked[0]?.screen ?? null;
+}

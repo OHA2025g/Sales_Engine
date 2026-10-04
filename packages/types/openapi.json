@@ -71,6 +71,29 @@
         "title": "AbmOut",
         "type": "object"
       },
+      "AcceptIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "password",
+          "token"
+        ],
+        "title": "AcceptIn",
+        "type": "object"
+      },
       "AccountContextOut": {
         "properties": {
           "account": {
@@ -86,6 +109,7 @@
           "lifecycle": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -126,6 +150,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -267,6 +292,7 @@
           "annual_revenue": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -559,6 +585,7 @@
           "payload_patch": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -2231,7 +2258,7 @@
       "Body_upload_knowledge_api_v1_ai_knowledge_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },
@@ -2259,6 +2286,7 @@
             "type": "string"
           },
           "payload": {
+            "additionalProperties": true,
             "title": "Payload",
             "type": "object"
           },
@@ -2354,6 +2382,7 @@
         "properties": {
           "budget": {
             "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Budget",
             "type": "string"
           },
@@ -2375,6 +2404,7 @@
           "cpc": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2386,6 +2416,7 @@
           "cpl": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2402,6 +2433,7 @@
           "ctr": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2470,6 +2502,7 @@
           },
           "spent": {
             "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Spent",
             "type": "string"
           },
@@ -2513,6 +2546,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -2540,6 +2574,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2554,6 +2589,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2568,6 +2604,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2628,6 +2665,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -2771,6 +2809,7 @@
         "properties": {
           "budget": {
             "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Budget",
             "type": "string"
           },
@@ -2792,6 +2831,7 @@
           "cpc": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2803,6 +2843,7 @@
           "cpl": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2819,6 +2860,7 @@
           "ctr": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2880,6 +2922,7 @@
           },
           "spent": {
             "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Spent",
             "type": "string"
           },
@@ -2913,6 +2956,81 @@
           "created_at"
         ],
         "title": "CampaignOut",
+        "type": "object"
+      },
+      "CampaignPlanIn": {
+        "properties": {
+          "audience": {
+            "default": "",
+            "title": "Audience",
+            "type": "string"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Budget"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "currency": {
+            "default": "INR",
+            "title": "Currency",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objective_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective Id"
+          },
+          "offer_key": {
+            "default": "",
+            "title": "Offer Key",
+            "type": "string"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "status": {
+            "default": "approved",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "channel",
+          "budget"
+        ],
+        "title": "CampaignPlanIn",
         "type": "object"
       },
       "CaptureIn": {
@@ -3627,6 +3745,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -3674,6 +3793,7 @@
             "type": "string"
           },
           "list_price": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "List Price",
             "type": "string"
           },
@@ -3727,6 +3847,7 @@
           "line_total": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3761,6 +3882,7 @@
           "unit_price": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3869,6 +3991,7 @@
           "total_value": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -4118,6 +4241,7 @@
           "citations": {
             "default": [],
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Citations",
@@ -4162,6 +4286,7 @@
             "type": "string"
           },
           "extra": {
+            "additionalProperties": true,
             "default": {},
             "title": "Extra",
             "type": "object"
@@ -4187,12 +4312,14 @@
           },
           "advocacy": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Advocacy",
             "type": "array"
           },
           "automation": {
+            "additionalProperties": true,
             "title": "Automation",
             "type": "object"
           },
@@ -4238,6 +4365,7 @@
             "title": "Finance Outstanding"
           },
           "growth_plan": {
+            "additionalProperties": true,
             "title": "Growth Plan",
             "type": "object"
           },
@@ -4252,6 +4380,7 @@
             ]
           },
           "health_components": {
+            "additionalProperties": true,
             "title": "Health Components",
             "type": "object"
           },
@@ -4324,6 +4453,7 @@
           },
           "milestones": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Milestones",
@@ -4462,6 +4592,7 @@
             "title": "Account Name"
           },
           "arr": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Arr",
             "type": "string"
           },
@@ -4573,6 +4704,7 @@
             "title": "Detected At"
           },
           "evidence": {
+            "additionalProperties": true,
             "title": "Evidence",
             "type": "object"
           },
@@ -4984,6 +5116,39 @@
         "title": "DiscoveryRunOut",
         "type": "object"
       },
+      "DograhBrowserTestOut": {
+        "properties": {
+          "chat_widget_src": {
+            "default": "",
+            "title": "Chat Widget Src",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "sales_script": {
+            "default": "",
+            "title": "Sales Script",
+            "type": "string"
+          },
+          "voice_widget_src": {
+            "default": "",
+            "title": "Voice Widget Src",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ready",
+          "reason"
+        ],
+        "title": "DograhBrowserTestOut",
+        "type": "object"
+      },
       "EmailDraftRequest": {
         "properties": {
           "entity_id": {
@@ -5310,6 +5475,7 @@
             "type": "string"
           },
           "evidence": {
+            "additionalProperties": true,
             "title": "Evidence",
             "type": "object"
           },
@@ -6370,6 +6536,42 @@
           }
         },
         "title": "Envelope[DiscoveryRunOut]",
+        "type": "object"
+      },
+      "Envelope_DograhBrowserTestOut_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DograhBrowserTestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "Envelope[DograhBrowserTestOut]",
         "type": "object"
       },
       "Envelope_EmailDraftResponse_": {
@@ -8141,6 +8343,7 @@
           "data": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -10592,6 +10795,7 @@
             "anyOf": [
               {
                 "items": {
+                  "additionalProperties": true,
                   "type": "object"
                 },
                 "type": "array"
@@ -10647,6 +10851,29 @@
         "title": "ErrorBody",
         "type": "object"
       },
+      "EvidenceIn": {
+        "properties": {
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "default": "passed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "EvidenceIn",
+        "type": "object"
+      },
       "ExpansionOutcomeIn": {
         "properties": {
           "product": {
@@ -10686,6 +10913,7 @@
           "amount": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -10741,6 +10969,7 @@
           "outcome_value": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -10856,10 +11085,12 @@
       "ForecastOut": {
         "properties": {
           "best_case": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Best Case",
             "type": "string"
           },
           "committed": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Committed",
             "type": "string"
           },
@@ -10878,6 +11109,7 @@
             "type": "string"
           },
           "pipeline": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Pipeline",
             "type": "string"
           },
@@ -10886,6 +11118,7 @@
             "type": "string"
           },
           "weighted": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Weighted",
             "type": "string"
           },
@@ -10951,6 +11184,57 @@
         "title": "GoogleConnectOut",
         "type": "object"
       },
+      "GrantIn": {
+        "properties": {
+          "channel": {
+            "default": "email",
+            "title": "Channel",
+            "type": "string"
+          },
+          "cost_cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Cost Cap"
+          },
+          "mode": {
+            "default": "assisted",
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "segment": {
+            "default": "",
+            "title": "Segment",
+            "type": "string"
+          },
+          "volume_cap": {
+            "default": 0,
+            "title": "Volume Cap",
+            "type": "integer"
+          },
+          "workflow": {
+            "default": "inbound",
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "GrantIn",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -10989,6 +11273,7 @@
             "type": "array"
           },
           "payload": {
+            "additionalProperties": true,
             "title": "Payload",
             "type": "object"
           },
@@ -11308,6 +11593,7 @@
           },
           "rows": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Rows",
@@ -11365,6 +11651,7 @@
           },
           "rows": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Rows",
@@ -11553,6 +11840,34 @@
         "title": "IntegrationAccountOut",
         "type": "object"
       },
+      "InviteIn": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "default": "",
+            "title": "Password",
+            "type": "string"
+          },
+          "role_name": {
+            "default": "Sales Rep",
+            "title": "Role Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "InviteIn",
+        "type": "object"
+      },
       "KPIOut": {
         "properties": {
           "knowledge_sources": {
@@ -11568,6 +11883,7 @@
             "type": "integer"
           },
           "open_pipeline_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Open Pipeline Value",
             "type": "string"
           },
@@ -11596,6 +11912,7 @@
             "type": "integer"
           },
           "weighted_pipeline_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Weighted Pipeline Value",
             "type": "string"
           },
@@ -12797,6 +13114,24 @@
         "title": "MeetingOut",
         "type": "object"
       },
+      "MeetingOutcomeIn": {
+        "properties": {
+          "qualified": {
+            "title": "Qualified",
+            "type": "boolean"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "qualified"
+        ],
+        "title": "MeetingOutcomeIn",
+        "type": "object"
+      },
       "MeetingTranscriptIn": {
         "properties": {
           "transcript": {
@@ -13086,6 +13421,57 @@
         "title": "NBAOut",
         "type": "object"
       },
+      "ObjectiveIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "offer_key": {
+            "default": "",
+            "title": "Offer Key",
+            "type": "string"
+          },
+          "period": {
+            "default": "",
+            "title": "Period",
+            "type": "string"
+          },
+          "segment": {
+            "default": "",
+            "title": "Segment",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "target_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Target Amount"
+          },
+          "target_measure": {
+            "default": "qualified_pipeline",
+            "title": "Target Measure",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ObjectiveIn",
+        "type": "object"
+      },
       "OpportunityIn": {
         "properties": {
           "account_id": {
@@ -13104,6 +13490,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -13216,6 +13603,7 @@
           },
           "amount": {
             "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -13350,11 +13738,13 @@
             "type": "string"
           },
           "new": {
+            "additionalProperties": true,
             "default": {},
             "title": "New",
             "type": "object"
           },
           "previous": {
+            "additionalProperties": true,
             "default": {},
             "title": "Previous",
             "type": "object"
@@ -13722,6 +14112,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -13768,6 +14159,7 @@
           },
           "list_price": {
             "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "List Price",
             "type": "string"
           },
@@ -13999,6 +14391,17 @@
         "title": "ProviderHealthOut",
         "type": "object"
       },
+      "QuoteAcceptIn": {
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "QuoteAcceptIn",
+        "type": "object"
+      },
       "QuoteIn": {
         "properties": {
           "discount_pct": {
@@ -14048,6 +14451,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -14071,6 +14475,7 @@
             "type": "string"
           },
           "line_total": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Line Total",
             "type": "string"
           },
@@ -14089,6 +14494,7 @@
             "type": "string"
           },
           "unit_price": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unit Price",
             "type": "string"
           }
@@ -14136,6 +14542,7 @@
             "type": "string"
           },
           "subtotal": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Subtotal",
             "type": "string"
           },
@@ -14144,6 +14551,7 @@
             "type": "integer"
           },
           "total": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total",
             "type": "string"
           }
@@ -14389,6 +14797,7 @@
           "baseline_amount": {
             "anyOf": [
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -14403,6 +14812,7 @@
             "type": "string"
           },
           "current_arr": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Current Arr",
             "type": "string"
           },
@@ -14901,6 +15311,7 @@
             "type": "string"
           },
           "extra": {
+            "additionalProperties": true,
             "title": "Extra",
             "type": "object"
           },
@@ -15093,9 +15504,28 @@
         "title": "SocialPostOut",
         "type": "object"
       },
+      "StageAdvanceIn": {
+        "properties": {
+          "evidence": {
+            "default": "",
+            "title": "Evidence",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage"
+        ],
+        "title": "StageAdvanceIn",
+        "type": "object"
+      },
       "StageMixOut": {
         "properties": {
           "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -15202,6 +15632,7 @@
           },
           "arr": {
             "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Arr",
             "type": "string"
           },
@@ -15905,6 +16336,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -16173,6 +16611,7 @@
             "type": "string"
           },
           "value_hint": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Value Hint",
             "type": "string"
           }
@@ -19792,40 +20231,6 @@
     "/api/v1/autonomy/events": {
       "get": {
         "operationId": "autonomy_events_api_v1_autonomy_events_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-correlation-id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Correlation-Id"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "refresh_token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Refresh Token"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -19834,16 +20239,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "security": [
@@ -26325,6 +26720,76 @@
           }
         ],
         "summary": "Rescore Deals",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/v1/lifecycle/dograh/browser-test": {
+      "get": {
+        "operationId": "dograh_browser_test_api_v1_lifecycle_dograh_browser_test_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_DograhBrowserTestOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dograh Browser Test",
         "tags": [
           "lifecycle"
         ]
@@ -33690,6 +34155,1249 @@
         ]
       }
     },
+    "/api/v1/workflow/campaign-plans": {
+      "post": {
+        "operationId": "post_campaign_plan_api_v1_workflow_campaign_plans_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignPlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Campaign Plan",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/command": {
+      "get": {
+        "operationId": "command_api_v1_workflow_command_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_dict__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Command",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/events/{event_id}/replay": {
+      "post": {
+        "operationId": "replay_api_v1_workflow_events__event_id__replay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Replay",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/grants": {
+      "post": {
+        "operationId": "create_grant_api_v1_workflow_grants_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Grant",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/invitations": {
+      "post": {
+        "operationId": "invitation_api_v1_workflow_invitations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invitation",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/invitations/{invitation_id}/accept": {
+      "post": {
+        "operationId": "accept_api_v1_workflow_invitations__invitation_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/launch": {
+      "get": {
+        "operationId": "launch_api_v1_workflow_launch_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Launch",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/meetings/{meeting_id}/outcome": {
+      "post": {
+        "operationId": "meeting_outcome_api_v1_workflow_meetings__meeting_id__outcome_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Meeting Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeetingOutcomeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Meeting Outcome",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/objectives": {
+      "post": {
+        "operationId": "post_objective_api_v1_workflow_objectives_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Objective",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/operations": {
+      "get": {
+        "operationId": "operations_api_v1_workflow_operations_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Operations",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/operations/evidence": {
+      "post": {
+        "operationId": "evidence_api_v1_workflow_operations_evidence_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Evidence",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/opportunities/{opportunity_id}/advance": {
+      "post": {
+        "operationId": "advance_stage_api_v1_workflow_opportunities__opportunity_id__advance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "opportunity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Opportunity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StageAdvanceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Advance Stage",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/quotes/{quote_id}/accept": {
+      "post": {
+        "operationId": "accept_quote_api_v1_workflow_quotes__quote_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quote_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Quote Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteAcceptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accept Quote",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/retention": {
+      "get": {
+        "operationId": "retention_api_v1_workflow_retention_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retention",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/sequences/{sequence_id}/activate": {
+      "post": {
+        "operationId": "activate_sequence_api_v1_workflow_sequences__sequence_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sequence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sequence Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Activate Sequence",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/workflow/users/{user_id}/deactivate": {
+      "post": {
+        "operationId": "deactivate_api_v1_workflow_users__user_id__deactivate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Deactivate",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",
@@ -33698,6 +35406,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Health Health Get",
                   "type": "object"
                 }
@@ -33717,6 +35426,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Health Live Health Live Get",
                   "type": "object"
                 }
@@ -33736,6 +35446,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Health Ready Health Ready Get",
                   "type": "object"
                 }
@@ -33799,6 +35510,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Ready Ready Get",
                   "type": "object"
                 }

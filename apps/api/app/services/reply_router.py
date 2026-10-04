@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.ai import AIApproval, AIRecommendation
 from app.models.crm import Contact, Lead
+from app.models.execution import ActionRequest
 from app.models.integrations import EmailMessage
 from app.models.lifecycle import SequenceEnrollment
 from app.services.automation_state import upsert_state
@@ -19,6 +20,18 @@ from app.services.reply_intelligence import ReplyCategory, _normalize_category
 
 
 def _cancel_pending_sends(db: Session, *, tenant_id: UUID, lead_id: UUID) -> None:
+    requests = db.scalars(
+        select(ActionRequest).where(
+            ActionRequest.tenant_id == tenant_id,
+            ActionRequest.entity_id == str(lead_id),
+            ActionRequest.status.in_(["pending", "approved", "deferred", "queued"]),
+            ActionRequest.deleted_at.is_(None),
+        )
+    ).all()
+    for request in requests:
+        if request.action_type.endswith(".send") or request.channel == "email":
+            request.status = "cancelled"
+            request.result = "Cancelled after an inbound reply."
     rows = db.scalars(
         select(AIApproval).where(
             AIApproval.tenant_id == tenant_id,
@@ -158,6 +171,8 @@ def route_reply(
         )
         return "nurture"
     if category in {"QUESTION", "OBJECTION"}:
+        _cancel_pending_sends(db, tenant_id=tenant_id, lead_id=lead.id)
+        _stop_enrollments(db, tenant_id=tenant_id, lead_id=lead.id)
         key = f"email.reply:{lead.id}:{message.id}"
         exists = db.scalar(
             select(AIApproval).where(
@@ -208,7 +223,21 @@ def route_reply(
         return "reply_queued"
     if category in {"POSITIVE_INTEREST", "MEETING_REQUEST"}:
         settings = get_or_create_settings(db, tenant_id=tenant_id, actor_id=actor_id)
-        qualify_lead(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, settings=settings)
+        qualification = qualify_lead(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, settings=settings)
+        if not qualification.get("qualified"):
+            upsert_state(
+                db,
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                entity_type="lead",
+                entity_id=str(lead.id),
+                state="BLOCKED",
+                last_action="qualification_incomplete",
+                next_action="complete_qualification",
+                blocked_reason="A positive reply is not a sales-qualified meeting until qualification passes",
+                run_id=run_id,
+            )
+            return "qualification_required"
         queue_meeting_proposal(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, run_id=run_id)
         upsert_state(
             db,

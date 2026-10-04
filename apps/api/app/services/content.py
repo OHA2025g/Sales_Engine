@@ -484,12 +484,25 @@ def _publish_post(db: Session, *, tenant_id: UUID, actor_id: UUID, draft: Conten
 
 
 def _publish_ad(db: Session, *, tenant_id: UUID, actor_id: UUID, draft: ContentDraft) -> ContentDraft:
+    from app.services.dispatcher import _channel_blocked
+    from app.services.revenue_ledger import approved_ad_budget
+
     product = None
     if draft.product_id is not None:
         product = db.get(Product, draft.product_id)
-    budget = Decimal("10")
-    if product is not None and Decimal(str(product.list_price)) > 0:
-        budget = Decimal(str(product.list_price))
+    blocked = _channel_blocked(db, tenant_id, "ads.launch")
+    if blocked:
+        draft.status = "blocked"
+        draft.error = blocked
+        db.flush()
+        return draft
+    plan = approved_ad_budget(db, tenant_id=tenant_id, channel=draft.channel, product_id=draft.product_id)
+    if plan is None:
+        draft.status = "failed"
+        draft.error = "Approved marketing budget is required. Product price is not an ad budget."
+        db.flush()
+        return draft
+    budget = Decimal(str(plan.budget)) - Decimal(str(plan.spent or 0))
     name = (draft.headline or (product.name if product else "Content ad"))[:160]
     campaign = Campaign(
         tenant_id=tenant_id,

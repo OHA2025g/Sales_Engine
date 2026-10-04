@@ -65,7 +65,7 @@ export default function IntelligencePage() {
             ) : (
               turns.map((turn, index) => (
                 <div key={`${turn.role}-${index}`} className={turn.role === "human" ? "text-right" : ""}>
-                  <div className={`inline-block max-w-[85%] rounded-2xl px-4 py-3 text-left text-sm leading-6 ${turn.role === "human" ? "bg-brand-50 text-ink" : "bg-slate-50"}`}>
+                  <div className={`inline-block max-w-[85%] rounded-2xl px-4 py-3 text-left text-sm leading-6 ${turn.role === "human" ? "bg-brand-50 text-ink" : "bg-raised"}`}>
                     {turn.meta ? <p className="mb-2 text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">{turn.meta}</p> : null}
                     <p className="whitespace-pre-wrap">{turn.text}</p>
                     {turn.citations?.length ? (

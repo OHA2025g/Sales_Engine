@@ -39,7 +39,7 @@ export function CopilotDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-navy/20 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50">
       <button className="flex-1" onClick={onClose} aria-label="Close copilot" />
       <aside className="glass-strong flex h-full w-full max-w-xl flex-col border-l">
         <div className="border-b border-[var(--line)] px-6 py-5">

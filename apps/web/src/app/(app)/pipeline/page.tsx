@@ -73,9 +73,11 @@ export default function PipelinePage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Sell"
-        title="Pipeline"
-        subtitle="Stage probability is deterministic. Closed Won mints a customer and a renewal stub."
+        eyebrow="Sales"
+        title="Opportunity pipeline"
+        subtitle="Qualified opportunities, stage totals, and the next owned step."
+        nextHref="/commercial"
+        nextLabel="Quotes & catalog"
       />
       <ListToolbar
         query={q}
@@ -89,35 +91,32 @@ export default function PipelinePage() {
       {rows.length === 0 ? (
         <EmptyState title="The board is empty" body="Open an opportunity from a live account. No decorative deals are invented." />
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-4">
+        <div className="board">
           {visible.map((column) => {
             const cards = rows.filter((row) => row.stage === column);
             const sum = cards.reduce((acc, row) => acc + Number(row.amount || 0), 0);
             return (
-              <section key={column} className="panel min-w-[280px] flex-1 p-3">
-                <div className="mb-3 flex items-center justify-between px-1">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">{labelize(column)}</p>
-                  <Badge tone="gold">{money(sum)}</Badge>
+              <section key={column} className="board-col">
+                <div className="board-head">
+                  <strong>{labelize(column)}</strong>
+                  <span className="muted num">{money(sum)}</span>
                 </div>
-                <div className="space-y-2">
-                  {cards.length === 0 ? (
-                    <p className="px-2 py-6 text-xs text-[var(--muted)]">No deals.</p>
-                  ) : (
-                    cards.map((row) => (
-                      <Link
-                        key={row.id}
-                        href={`/opportunities/${row.id}`}
-                        className="block rounded-xl border border-[var(--line)] bg-slate-50 px-3 py-3 hover:border-brand/40"
-                      >
-                        <p className="text-sm text-ink">{row.name}</p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">
-                          {money(row.amount)} · {row.probability}%
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">{row.next_step || "No next step"}</p>
-                      </Link>
-                    ))
-                  )}
-                </div>
+                {cards.length === 0 ? <p className="small muted">No deals.</p> : null}
+                {cards.map((row) => {
+                  const attention = !row.next_step;
+                  return (
+                    <Link key={row.id} href={`/opportunities/${row.id}`} className="deal-card">
+                      <div className="upper">{row.probability}% probability</div>
+                      <h3>{row.name}</h3>
+                      <span className="amount num">{money(row.amount)}</span>
+                      <p className="small muted">{row.next_step || "Next step not recorded"}</p>
+                      <div className="between">
+                        <Badge tone={attention ? "gold" : "ok"}>{attention ? "Needs attention" : "Progressing"}</Badge>
+                        <span className="small muted">{row.expected_close || "Date unavailable"}</span>
+                      </div>
+                    </Link>
+                  );
+                })}
               </section>
             );
           })}

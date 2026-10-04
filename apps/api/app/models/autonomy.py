@@ -107,6 +107,7 @@ class AutopilotSettings(Base, TenantOwnedMixin):
     allow_deployment_provider_defaults: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     allow_unscanned_uploads: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     whatsapp_channel_paused: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    social_channel_paused: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     current_policy_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     voice_telephony_override: Mapped[str] = mapped_column(String(40), default="", nullable=False)
     voice_conversation_provider: Mapped[str] = mapped_column(String(40), default="vapi", nullable=False)
@@ -124,6 +125,10 @@ class EntityAutomationState(Base, TenantOwnedMixin):
     blocked_reason: Mapped[str] = mapped_column(Text, default="", nullable=False)
     run_id: Mapped[UUID | None] = mapped_column(ForeignKey("autonomous_runs.id"), nullable=True)
     paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    business_state: Mapped[str] = mapped_column(String(40), default="", nullable=False)
+    execution_status: Mapped[str] = mapped_column(String(20), default="", nullable=False)
+    evaluation_key: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    resume_step: Mapped[str] = mapped_column(String(40), default="", nullable=False)
 
 
 class AutomationIdempotencyKey(Base, TenantOwnedMixin):

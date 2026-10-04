@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import type { Meeting } from "@/lib/types";
 import { api } from "@agrayian/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -105,7 +106,8 @@ export default function MeetingsPage() {
         <DataTable
           rows={rows}
           columns={[
-            { key: "title", header: "Title", cell: (row) => <button type="button" className="text-left text-navy underline" onClick={() => setSelected(row)}>{row.title}</button> },
+            { key: "title", header: "Title", cell: (row) => <button type="button" className="text-left text-ink underline" onClick={() => setSelected(row)}>{row.title}</button> },
+            { key: "outcome", header: "Outcome", cell: (row) => <Link href={`/meetings/${row.id}`}>Record</Link> },
             { key: "status", header: "Status", cell: (row) => row.status || "logged" },
             { key: "consent", header: "Record", cell: (row) => row.recording_consent ? <Badge>Consented</Badge> : "—" },
             { key: "capture", header: "Bot", cell: (row) => row.captures?.[0]?.status || "—" },

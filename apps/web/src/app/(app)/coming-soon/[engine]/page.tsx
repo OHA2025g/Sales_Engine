@@ -26,9 +26,9 @@ const COPY: Record<string, { title: string; eyebrow: string; body: string }> = {
 export default function ComingSoonPage() {
   const params = useParams<{ engine: string }>();
   const copy = COPY[params.engine] ?? {
-    eyebrow: "Later engine",
-    title: "Not yet built",
-    body: "This surface is reserved. Unfinished engines do not invent KPIs.",
+    eyebrow: "Not operational",
+    title: "This journey is not running",
+    body: "This page is not a working sales motion. Nothing here sends, spends, or moves a record.",
   };
   return (
     <div>

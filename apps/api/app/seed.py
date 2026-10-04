@@ -46,6 +46,7 @@ from app.models.lifecycle import (
     SequenceStep,
 )
 from app.models.market import AccountSignal, CompetitiveSignal, IntentSignal, Market, MarketSignal, TriggerEvent
+from app.seed_showroom import seed_showroom
 from app.services.crm import close_won
 from app.services.lifecycle import (
     build_forecast,
@@ -57,7 +58,6 @@ from app.services.lifecycle import (
 )
 from app.services.market import score_market
 from app.services.rbac import PERMISSIONS, ROLE_PERMISSIONS
-from app.seed_showroom import seed_showroom
 from app.services.scoring import score_lead
 from app.services.webhook_routes import demo_routing_token, ensure_route
 

@@ -1,0 +1,74 @@
+id,title,workspace,original,prototypeRoute,suggestedNextRoute,sourcePage,suggestedPageFile,next,developmentReviewOnly
+home,Overview,command,/,#/home,/,apps/web/src/app/(app)/page.tsx,apps/web/src/app/(app)/page.tsx,approvals,False
+flow,Revenue journey,command,,#/flow,/journey,,apps/web/src/app/(app)/journey/page.tsx,run-detail,False
+strategy,Revenue strategy,strategy,,#/strategy,/strategy,,apps/web/src/app/(app)/strategy/page.tsx,icps,False
+icps,Ideal customer profiles,strategy,/icps,#/icps,/icps,apps/web/src/app/(app)/icps/page.tsx,apps/web/src/app/(app)/icps/page.tsx,market,False
+market,Market overview,strategy,/market,#/market,/market,apps/web/src/app/(app)/market/page.tsx,apps/web/src/app/(app)/market/page.tsx,signals,False
+market-detail,Account intelligence,strategy,/market/[id],#/market-detail,/market/[id],apps/web/src/app/(app)/market/[id]/page.tsx,apps/web/src/app/(app)/market/[id]/page.tsx,campaign-detail,False
+signals,Signal inbox,strategy,/market/signals,#/signals,/market/signals,apps/web/src/app/(app)/market/signals/page.tsx,apps/web/src/app/(app)/market/signals/page.tsx,triggers,False
+triggers,Signal triggers,strategy,/market/triggers,#/triggers,/market/triggers,apps/web/src/app/(app)/market/triggers/page.tsx,apps/web/src/app/(app)/market/triggers/page.tsx,campaigns,False
+campaigns,Campaigns,marketing,/campaigns,#/campaigns,/campaigns,apps/web/src/app/(app)/campaigns/page.tsx,apps/web/src/app/(app)/campaigns/page.tsx,campaign-detail,False
+campaign-detail,Enterprise AI · campaign,marketing,,#/campaign-detail,/campaigns/[id],,apps/web/src/app/(app)/campaigns/[id]/page.tsx,content,False
+content,Content studio,marketing,/content,#/content,/content,apps/web/src/app/(app)/content/page.tsx,apps/web/src/app/(app)/content/page.tsx,content-editor,False
+content-editor,Content editor,marketing,,#/content-editor,/content/[id],,apps/web/src/app/(app)/content/[id]/page.tsx,calendar,False
+social,Social publishing,marketing,/social,#/social,/social,apps/web/src/app/(app)/social/page.tsx,apps/web/src/app/(app)/social/page.tsx,calendar,False
+calendar,Marketing calendar,marketing,,#/calendar,/marketing/calendar,,apps/web/src/app/(app)/marketing/calendar/page.tsx,acquisition,False
+acquisition,Inbound acquisition,marketing,/acquisition,#/acquisition,/acquisition,apps/web/src/app/(app)/acquisition/page.tsx,apps/web/src/app/(app)/acquisition/page.tsx,leads,False
+leads,Leads,sales,/leads,#/leads,/leads,apps/web/src/app/(app)/leads/page.tsx,apps/web/src/app/(app)/leads/page.tsx,lead-detail,False
+lead-detail,Lina Shah · lead,sales,/leads/[id],#/lead-detail,/leads/[id],apps/web/src/app/(app)/leads/[id]/page.tsx,apps/web/src/app/(app)/leads/[id]/page.tsx,conversations,False
+accounts,Accounts,sales,/accounts,#/accounts,/accounts,apps/web/src/app/(app)/accounts/page.tsx,apps/web/src/app/(app)/accounts/page.tsx,account-detail,False
+account-detail,Meridian Logistics,sales,/accounts/[id],#/account-detail,/accounts/[id],apps/web/src/app/(app)/accounts/[id]/page.tsx,apps/web/src/app/(app)/accounts/[id]/page.tsx,opportunity-detail,False
+contacts,Contacts,sales,/contacts,#/contacts,/contacts,apps/web/src/app/(app)/contacts/page.tsx,apps/web/src/app/(app)/contacts/page.tsx,contact-detail,False
+contact-detail,Lina Shah · contact,sales,/contacts/[id],#/contact-detail,/contacts/[id],apps/web/src/app/(app)/contacts/[id]/page.tsx,apps/web/src/app/(app)/contacts/[id]/page.tsx,lead-detail,False
+imports,Import centre,sales,/imports,#/imports,/imports,apps/web/src/app/(app)/imports/page.tsx,apps/web/src/app/(app)/imports/page.tsx,leads,False
+sequences,Outreach sequences,sales,/sequences,#/sequences,/sequences,apps/web/src/app/(app)/sequences/page.tsx,apps/web/src/app/(app)/sequences/page.tsx,sequence-builder,False
+sequence-builder,Sequence builder,sales,,#/sequence-builder,/sequences/[id]/edit,,apps/web/src/app/(app)/sequences/[id]/edit/page.tsx,policies,False
+conversations,Conversations,sales,/conversations,#/conversations,/conversations,apps/web/src/app/(app)/conversations/page.tsx,apps/web/src/app/(app)/conversations/page.tsx,meetings,False
+meetings,Meetings,sales,/meetings,#/meetings,/meetings,apps/web/src/app/(app)/meetings/page.tsx,apps/web/src/app/(app)/meetings/page.tsx,meeting-detail,False
+meeting-detail,Meridian · discovery,sales,,#/meeting-detail,/meetings/[id],,apps/web/src/app/(app)/meetings/[id]/page.tsx,opportunity-detail,False
+voice,Voice workspace,sales,/automation/voice-scripts,#/voice,/automation/voice-scripts,apps/web/src/app/(app)/automation/voice-scripts/page.tsx,apps/web/src/app/(app)/automation/voice-scripts/page.tsx,meeting-detail,False
+pipeline,Opportunity pipeline,sales,/pipeline,#/pipeline,/pipeline,apps/web/src/app/(app)/pipeline/page.tsx,apps/web/src/app/(app)/pipeline/page.tsx,opportunity-detail,False
+opportunity-detail,Meridian · deal room,sales,/opportunities/[id],#/opportunity-detail,/opportunities/[id],apps/web/src/app/(app)/opportunities/[id]/page.tsx,apps/web/src/app/(app)/opportunities/[id]/page.tsx,quote-detail,False
+deals,Deal risk,sales,/deals,#/deals,/deals,apps/web/src/app/(app)/deals/page.tsx,apps/web/src/app/(app)/deals/page.tsx,opportunity-detail,False
+tasks,Work queue,sales,/tasks,#/tasks,/tasks,apps/web/src/app/(app)/tasks/page.tsx,apps/web/src/app/(app)/tasks/page.tsx,task-detail,False
+task-detail,Confirm buyer success criteria,sales,/tasks/[id],#/task-detail,/tasks/[id],apps/web/src/app/(app)/tasks/[id]/page.tsx,apps/web/src/app/(app)/tasks/[id]/page.tsx,opportunity-detail,False
+commercial,Quotes & catalog,commercial,/commercial,#/commercial,/commercial,apps/web/src/app/(app)/commercial/page.tsx,apps/web/src/app/(app)/commercial/page.tsx,quote-detail,False
+quote-detail,Meridian · quote Q-1042,commercial,,#/quote-detail,/commercial/quotes/[id],,apps/web/src/app/(app)/commercial/quotes/[id]/page.tsx,approvals,False
+proposal,Proposal workspace,commercial,,#/proposal,/commercial/proposals/[id],,apps/web/src/app/(app)/commercial/proposals/[id]/page.tsx,quote-detail,False
+contracts,Contracts,commercial,,#/contracts,/commercial/contracts,,apps/web/src/app/(app)/commercial/contracts/page.tsx,contract-detail,False
+contract-detail,Meridian · contract,commercial,,#/contract-detail,/commercial/contracts/[id],,apps/web/src/app/(app)/commercial/contracts/[id]/page.tsx,onboarding,False
+customers,Customer portfolio,customers,/customers,#/customers,/customers,apps/web/src/app/(app)/customers/page.tsx,apps/web/src/app/(app)/customers/page.tsx,customer-detail,False
+customer-detail,Cedar Health · customer,customers,/customers/[id],#/customer-detail,/customers/[id],apps/web/src/app/(app)/customers/[id]/page.tsx,apps/web/src/app/(app)/customers/[id]/page.tsx,success,False
+onboarding,Onboarding,customers,,#/onboarding,/onboarding,,apps/web/src/app/(app)/onboarding/page.tsx,customer-detail,False
+success,Customer success,customers,/success,#/success,/success,apps/web/src/app/(app)/success/page.tsx,apps/web/src/app/(app)/success/page.tsx,customer-detail,False
+renewals,Renewals,customers,/renewals,#/renewals,/renewals,apps/web/src/app/(app)/renewals/page.tsx,apps/web/src/app/(app)/renewals/page.tsx,renewal-detail,False
+renewal-detail,Cedar · renewal plan,customers,,#/renewal-detail,/renewals/[id],,apps/web/src/app/(app)/renewals/[id]/page.tsx,quote-detail,False
+expansion,Expansion,customers,/expansion,#/expansion,/expansion,apps/web/src/app/(app)/expansion/page.tsx,apps/web/src/app/(app)/expansion/page.tsx,opportunity-detail,False
+advocacy,Advocacy,customers,/advocacy,#/advocacy,/advocacy,apps/web/src/app/(app)/advocacy/page.tsx,apps/web/src/app/(app)/advocacy/page.tsx,customer-detail,False
+runs,Execution centre,autopilot,/automation/runs,#/runs,/automation/runs,apps/web/src/app/(app)/automation/runs/page.tsx,apps/web/src/app/(app)/automation/runs/page.tsx,run-detail,False
+run-detail,Inbound journey · Meridian,autopilot,,#/run-detail,/automation/runs/[id],,apps/web/src/app/(app)/automation/runs/[id]/page.tsx,lead-detail,False
+approvals,Decision inbox,autopilot,/automation/approvals,#/approvals,/automation/approvals,apps/web/src/app/(app)/automation/approvals/page.tsx,apps/web/src/app/(app)/automation/approvals/page.tsx,quote-detail,False
+playbooks,Journey playbooks,autopilot,/playbooks,#/playbooks,/playbooks,apps/web/src/app/(app)/playbooks/page.tsx,apps/web/src/app/(app)/playbooks/page.tsx,playbook-builder,False
+playbook-builder,Playbook builder,autopilot,,#/playbook-builder,/playbooks/[id]/edit,,apps/web/src/app/(app)/playbooks/[id]/edit/page.tsx,runs,False
+policies,Autonomy & policies,autopilot,,#/policies,/automation/policies,,apps/web/src/app/(app)/automation/policies/page.tsx,runs,False
+forecast,Revenue forecast,insights,/forecast,#/forecast,/forecast,apps/web/src/app/(app)/forecast/page.tsx,apps/web/src/app/(app)/forecast/page.tsx,pipeline,False
+attribution,Campaign attribution,insights,,#/attribution,/insights/attribution,,apps/web/src/app/(app)/insights/attribution/page.tsx,campaign-detail,False
+retention,Customer cohorts,insights,,#/retention,/insights/retention,,apps/web/src/app/(app)/insights/retention/page.tsx,renewals,False
+automation,Automation performance,insights,,#/automation,/insights/automation,,apps/web/src/app/(app)/insights/automation/page.tsx,runs,False
+intelligence,AI research workspace,command,/intelligence,#/intelligence,/intelligence,apps/web/src/app/(app)/intelligence/page.tsx,apps/web/src/app/(app)/intelligence/page.tsx,opportunity-detail,False
+company,Company & workspace,settings,,#/company,/admin/company,,apps/web/src/app/(app)/admin/company/page.tsx,setup,False
+setup,Revenue launch,settings,,#/setup,/setup,,apps/web/src/app/(app)/setup/page.tsx,strategy,False
+knowledge,Knowledge library,settings,/knowledge,#/knowledge,/knowledge,apps/web/src/app/(app)/knowledge/page.tsx,apps/web/src/app/(app)/knowledge/page.tsx,content-editor,False
+models,AI & model governance,settings,/models,#/models,/models,apps/web/src/app/(app)/models/page.tsx,apps/web/src/app/(app)/models/page.tsx,pilot,False
+integrations,Connections,settings,/admin/integrations,#/integrations,/admin/integrations,apps/web/src/app/(app)/admin/integrations/page.tsx,apps/web/src/app/(app)/admin/integrations/page.tsx,setup,False
+users,People & access,settings,/admin/users,#/users,/admin/users,apps/web/src/app/(app)/admin/users/page.tsx,apps/web/src/app/(app)/admin/users/page.tsx,teams,False
+teams,Teams & ownership,settings,/admin/teams,#/teams,/admin/teams,apps/web/src/app/(app)/admin/teams/page.tsx,apps/web/src/app/(app)/admin/teams/page.tsx,policies,False
+flags,Feature controls,settings,/admin/flags,#/flags,/admin/flags,apps/web/src/app/(app)/admin/flags/page.tsx,apps/web/src/app/(app)/admin/flags/page.tsx,pilot,False
+audit,Audit trail,settings,/admin/audit,#/audit,/admin/audit,apps/web/src/app/(app)/admin/audit/page.tsx,apps/web/src/app/(app)/admin/audit/page.tsx,run-detail,False
+pilot,Operational readiness,settings,/admin/pilot,#/pilot,/admin/pilot,apps/web/src/app/(app)/admin/pilot/page.tsx,apps/web/src/app/(app)/admin/pilot/page.tsx,setup,False
+security,Security & data,settings,,#/security,/admin/security,,apps/web/src/app/(app)/admin/security/page.tsx,pilot,False
+design-system,Design system,settings,,#/design-system,/design-system,,apps/web/src/app/(app)/design-system/page.tsx,screen-index,True
+screen-index,All page designs,settings,,#/screen-index,/design-reference,,apps/web/src/app/(app)/design-reference/page.tsx,flow,True
+coming-soon,Capability availability,settings,/coming-soon/[engine],#/coming-soon,/coming-soon/[engine],apps/web/src/app/(app)/coming-soon/[engine]/page.tsx,apps/web/src/app/(app)/coming-soon/[engine]/page.tsx,integrations,False
+login,Sign in,settings,/login,#/login,/login,apps/web/src/app/login/page.tsx,apps/web/src/app/login/page.tsx,home,False
+capture,Public capture form,marketing,/capture/[token],#/capture,/capture/[token],apps/web/src/app/capture/[token]/page.tsx,apps/web/src/app/capture/[token]/page.tsx,lead-detail,False

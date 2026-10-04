@@ -9,13 +9,17 @@ from app.models.pilot import SchedulerHeartbeat
 from app.services.provider_metrics import CELERY_BEAT_UP, CELERY_WORKERS
 
 
-def record_beat(db: Session, *, key: str = "celery_beat") -> SchedulerHeartbeat:
+def record_beat(db: Session, *, key: str = "celery_beat", leader_token: str = "") -> SchedulerHeartbeat:
     row = db.get(SchedulerHeartbeat, key)
     if row is None:
         row = SchedulerHeartbeat(id=key)
         db.add(row)
     row.last_beat_at = datetime.now(UTC)
     row.detail = "ok"
+    if leader_token:
+        row.leader_token = leader_token
+    elif not row.leader_token:
+        row.leader_token = "local"
     CELERY_BEAT_UP.set(1)
     db.flush()
     return row

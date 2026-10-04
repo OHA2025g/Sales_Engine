@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.identity import AuditLog, DomainEvent
+from app.services.correlation import bound_correlation_id
 
 
 def write_audit(
@@ -32,7 +33,7 @@ def write_audit(
             before_json=None if before is None else json.dumps(before, default=str),
             after_json=None if after is None else json.dumps(after, default=str),
             ip=ip,
-            correlation_id=correlation_id,
+            correlation_id=bound_correlation_id(correlation_id),
         )
     )
 
@@ -55,7 +56,8 @@ def emit_event(
             entity_type=entity_type,
             entity_id=entity_id,
             payload_json=json.dumps(payload or {}, default=str),
-            correlation_id=correlation_id,
+            correlation_id=bound_correlation_id(correlation_id),
             schema_version=schema_version,
+            delivery_status="pending",
         )
     )

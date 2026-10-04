@@ -1,11 +1,10 @@
 "use client";
 
-import { DataTable } from "@/components/data-table";
+import { Checks, Go, initials, Line, Panel, Stats } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
-import { DeniedState, EmptyState, ErrorState, LoadingState } from "@/components/states";
-import { Badge, Button, Drawer, Field, FormActions, Input, Score, Textarea } from "@/components/ui";
+import { DeniedState, ErrorState, LoadingState } from "@/components/states";
+import { Button, Drawer, Field, FormActions, Input, Textarea } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { labelize } from "@/lib/format";
 import type { Market } from "@/lib/types";
 import { api } from "@agrayian/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -72,38 +71,61 @@ export default function MarketPage() {
           </>
         }
       />
-      {k ? (
-        <div className="mb-6 grid gap-4 md:grid-cols-4">
-          {[
-            ["Markets", String(k.markets), "Defined theses"],
-            ["Scored", String(k.scored_markets), "rules-v1"],
-            ["Signals", String(k.signals), `${k.mock_signals} labeled mock`],
-            ["Triggers", String(k.triggers), "Buying events"],
-          ].map(([label, value, hint]) => (
-            <div key={label} className="panel p-5">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">{label}</p>
-              <p className="mt-3 text-3xl font-semibold text-navy">{value}</p>
-              <p className="mt-2 text-xs text-[var(--muted)]">{hint}</p>
+      <Stats
+        items={[
+          { name: "Accounts monitored", value: String(k?.markets ?? "—"), note: "Defined markets in this tenant" },
+          { name: "Fresh relevant signals", value: String(k?.signals ?? "—"), note: `${k?.mock_signals ?? 0} labeled mock` },
+          { name: "Buying hypotheses", value: String(k?.scored_markets ?? "—"), note: "Scored with rules-v1" },
+          { name: "Sources requiring attention", value: String(k?.triggers ?? "—"), note: "Signal triggers" },
+        ]}
+      />
+      <div className="ds-grid wide">
+        <Panel
+          title="Prioritized account opportunities"
+          extra={<Go href="/market/signals">All signals</Go>}
+          body={false}
+        >
+          {rows.length === 0 ? (
+            <div className="empty">
+              <h3>No markets yet</h3>
+              <p>Define a thesis. Scores stay at zero until signals exist.</p>
             </div>
-          ))}
-        </div>
-      ) : null}
-      {rows.length === 0 ? (
-        <EmptyState title="No markets yet" body="Define a thesis. Scores stay at zero until signals exist." />
-      ) : (
-        <DataTable
-          rows={rows}
-          href={(row) => `/market/${row.id}`}
-          columns={[
-            { key: "name", header: "Market", cell: (row) => row.name },
-            { key: "industry", header: "Industry", cell: (row) => labelize(row.industry) },
-            { key: "geo", header: "Geography", cell: (row) => row.geography || "—" },
-            { key: "attr", header: "Attractiveness", cell: (row) => <Score value={row.attractiveness} /> },
-            { key: "timing", header: "Timing", cell: (row) => <Score value={row.buying_timing} /> },
-            { key: "comp", header: "Competition", cell: (row) => <Badge>{row.competitive_intensity}</Badge> },
-          ]}
-        />
-      )}
+          ) : (
+            rows.map((row) => (
+              <div className="row" key={row.id}>
+                <span className="avatar square">{initials(row.name)}</span>
+                <div className="main">
+                  <h3>{row.name}</h3>
+                  <p>{row.description || `${row.industry || "Industry not set"} · ${row.geography || "Geography not set"}`}</p>
+                  <div className="ds-flex" style={{ marginTop: 8 }}>
+                    <span className="tag purple">Attractiveness {row.attractiveness}</span>
+                    <span className="tag">Timing {row.buying_timing}</span>
+                  </div>
+                </div>
+                <Go href={`/market/${row.id}`}>Inspect brief</Go>
+              </div>
+            ))
+          )}
+        </Panel>
+        <Panel title="Source and decision quality">
+          <Line label="Public company news" value="Verified when a live source is connected" />
+          <Line label="Company announcements" value="Verified when a live source is connected" />
+          <Line label="Customer usage" value="Production telemetry when connected" />
+          <Line label="Contact discovery" value="Eligibility still required" />
+          <Line label="Demonstration sources" value="Excluded from live decisions" />
+          <hr className="rule" />
+          <Checks
+            items={[
+              { label: "Evidence relevance is visible", ok: (k?.signals ?? 0) > 0 },
+              { label: "Mock sources are labeled", ok: true },
+              { label: "A permitted journey is attached", ok: false },
+            ]}
+          />
+          <div style={{ marginTop: 16 }}>
+            <Go href="/admin/integrations">Manage connections</Go>
+          </div>
+        </Panel>
+      </div>
       <Drawer open={open} title="Define a market" onClose={() => setOpen(false)}>
         <form onSubmit={form.handleSubmit((values) => create.mutate(values))} className="space-y-4">
           <Field label="Name"><Input {...form.register("name", { required: true })} /></Field>

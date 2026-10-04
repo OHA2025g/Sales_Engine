@@ -2,149 +2,48 @@
 
 import { CommandPalette } from "@/components/command-palette";
 import { CopilotDrawer } from "@/components/copilot-drawer";
+import { Icon } from "@/components/icon";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
-import {
-  BookOpen,
-  Briefcase,
-  Building2,
-  Calendar,
-  CheckSquare,
-  ChevronDown,
-  ChevronLeft,
-  ChevronsUpDown,
-  CircleDollarSign,
-  Flag,
-  Handshake,
-  HeartPulse,
-  LayoutDashboard,
-  Megaphone,
-  MessageSquare,
-  PanelLeft,
-  PenLine,
-  RefreshCw,
-  Repeat,
-  Search,
-  Settings,
-  ShieldCheck,
-  Sparkles,
-  Bot,
-  Target,
-  TrendingUp,
-  Upload,
-  Users,
-  Workflow,
-} from "lucide-react";
-import Link from "next/link";
+import { activeWorkspace, breadcrumbs, WORKSPACES } from "@/lib/navigation";
+import { ROLE_PREVIEWS, RolePreviewProvider, useRolePreview } from "@/lib/role-preview";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-const GROUPS = [
-  {
-    label: "Start here",
-    defaultOpen: true,
-    items: [
-      { href: "/", label: "Home", permission: "command_center.read", icon: LayoutDashboard },
-      { href: "/automation/runs", label: "Autopilot", permission: "autonomy.read", icon: Bot },
-      { href: "/automation/approvals", label: "Approvals", permission: "ai.approvals.read", icon: ShieldCheck },
-      { href: "/leads", label: "Leads", permission: "leads.read", icon: Target },
-      { href: "/icps", label: "Who we sell to", permission: "icps.read", icon: Flag },
-    ],
-  },
-  {
-    label: "Records",
-    defaultOpen: false,
-    items: [
-      { href: "/accounts", label: "Accounts", permission: "accounts.read", icon: Building2 },
-      { href: "/contacts", label: "Contacts", permission: "contacts.read", icon: Users },
-      { href: "/imports", label: "Import CSV", permission: "leads.write", icon: Upload },
-      { href: "/tasks", label: "Tasks", permission: "tasks.read", icon: CheckSquare },
-    ],
-  },
-  {
-    label: "Sell",
-    defaultOpen: false,
-    items: [
-      { href: "/pipeline", label: "Pipeline", permission: "opportunities.read", icon: Briefcase },
-      { href: "/campaigns", label: "Campaigns", permission: "campaigns.read", icon: Megaphone },
-      { href: "/social", label: "Social posts", permission: "campaigns.read", icon: MessageSquare },
-      { href: "/content", label: "Content", permission: "campaigns.read", icon: PenLine },
-      { href: "/sequences", label: "Sequences", permission: "sequences.read", icon: Repeat },
-      { href: "/acquisition", label: "Inbound", permission: "acquisition.read", icon: Megaphone },
-    ],
-  },
-  {
-    label: "Meet",
-    defaultOpen: false,
-    items: [
-      { href: "/conversations", label: "Conversations", permission: "conversations.read", icon: MessageSquare },
-      { href: "/meetings", label: "Meetings", permission: "meetings.read", icon: Calendar },
-      { href: "/automation/voice-scripts", label: "Voice scripts", permission: "conversations.read", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "After the sale",
-    defaultOpen: false,
-    items: [
-      { href: "/deals", label: "Deal risk", permission: "deals.read", icon: Target },
-      { href: "/commercial", label: "Quotes", permission: "commercial.read", icon: CircleDollarSign },
-      { href: "/forecast", label: "Forecast", permission: "forecast.read", icon: TrendingUp },
-      { href: "/customers", label: "Customers", permission: "accounts.read", icon: Handshake },
-      { href: "/success", label: "Success", permission: "success.read", icon: HeartPulse },
-      { href: "/renewals", label: "Renewals", permission: "success.read", icon: RefreshCw },
-      { href: "/expansion", label: "Expansion", permission: "success.read", icon: ChevronsUpDown },
-      { href: "/advocacy", label: "Advocacy", permission: "advocacy.read", icon: Handshake },
-    ],
-  },
-  {
-    label: "More",
-    defaultOpen: false,
-    items: [
-      { href: "/intelligence", label: "Copilot", permission: "ai.copilot", icon: Sparkles },
-      { href: "/knowledge", label: "Knowledge", permission: "knowledge.read", icon: BookOpen },
-      { href: "/market", label: "Market", permission: "markets.read", icon: TrendingUp },
-      { href: "/playbooks", label: "Playbooks", permission: "revops.read", icon: Workflow },
-      { href: "/models", label: "Models", permission: "revops.read", icon: Settings },
-    ],
-  },
-  {
-    label: "Admin",
-    defaultOpen: false,
-    items: [
-      { href: "/admin/pilot", label: "Pilot readiness", permission: "pilot.view", icon: ShieldCheck },
-      { href: "/admin/integrations", label: "Integrations", permission: "integrations.read", icon: Settings },
-      { href: "/admin/users", label: "People", permission: "users.read", icon: Users },
-      { href: "/admin/teams", label: "Teams", permission: "teams.read", icon: Users },
-      { href: "/admin/flags", label: "Flags", permission: "flags.read", icon: Flag },
-      { href: "/admin/audit", label: "Audit", permission: "audit.read", icon: ShieldCheck },
-    ],
-  },
-];
+const WORKSPACE_ICON: Record<string, string> = {
+  command: "dashboard",
+  strategy: "compass",
+  marketing: "megaphone",
+  sales: "briefcase",
+  commercial: "document",
+  customers: "heart",
+  autopilot: "workflow",
+  insights: "chart",
+  settings: "settings",
+};
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function ShellFrame({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, can } = useAuth();
+  const { role, setRole } = useRolePreview();
   const router = useRouter();
   const pathname = usePathname();
   const [palette, setPalette] = useState(false);
   const [copilot, setCopilot] = useState(false);
   const [seed, setSeed] = useState("");
-  const [collapsed, setCollapsed] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(GROUPS.map((group) => [group.label, group.defaultOpen])),
-  );
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
-
-
-  useEffect(() => {
-    const match = GROUPS.find((group) =>
-      group.items.some((item) => (item.href === "/" ? pathname === "/" : pathname === item.href || pathname.startsWith(`${item.href}/`))),
-    );
-    if (!match) return;
-    setOpenGroups((current) => ({ ...current, [match.label]: true }));
-  }, [pathname]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -157,134 +56,171 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const visibleGroups = useMemo(
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
+
+  const visible = useMemo(
     () =>
-      GROUPS.map((group) => ({
-        ...group,
-        items: group.items.filter((item) => can(item.permission)),
-      })).filter((group) => group.items.length),
+      WORKSPACES.map((workspace) => ({
+        ...workspace,
+        children: workspace.children.filter((item) => !item.permission || can(item.permission)),
+      })).filter((workspace) => workspace.children.length > 0),
     [can],
   );
 
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-[var(--muted)]">Restoring session</div>;
+  if (loading || !user) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-[var(--dim)]">Restoring session</div>;
   }
-  if (!user) return null;
+
+  const current = activeWorkspace(pathname);
+  const trail = breadcrumbs(pathname);
+  const mark = initials(user.name) || "SE";
 
   return (
-    <div className="relative flex min-h-screen bg-transparent">
-      <aside
-        className={cn(
-          "glass-strong sticky top-0 z-20 flex h-screen flex-col border-r transition-[width]",
-          collapsed ? "w-[72px]" : "w-[248px]",
-        )}
-      >
-        <div className={cn("flex items-center gap-2 px-4 py-5", collapsed && "justify-center px-2")}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/70 bg-navy/90 text-xs font-bold text-white shadow-glass">
-            A
+    <div className="app-shell">
+      {navOpen ? <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} /> : null}
+      <aside className={cn("sidebar", navOpen && "open")} id="sidebar">
+        <a href="/" className="brand">
+          <span className="brand-mark">
+            <i />
+            <i />
+            <i />
+          </span>
+          Sales Engine
+        </a>
+        <div className="tenant">
+          <span className="avatar">AA</span>
+          <div>
+            <strong>AGRAYIAN AI LABS</strong>
+            <div className="small muted">Revenue workspace</div>
           </div>
-          {collapsed ? null : (
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-azure-600">AGRAYIAN</p>
-              <p className="truncate text-sm font-semibold text-navy">Revenue OS</p>
-            </div>
-          )}
         </div>
-        <nav className="flex-1 space-y-1 overflow-auto px-2 pb-4">
-          {visibleGroups.map((group) => {
-            const open = collapsed || openGroups[group.label];
-            return (
-              <div key={group.label}>
-                {collapsed ? null : (
-                  <button
-                    type="button"
-                    onClick={() => setOpenGroups((current) => ({ ...current, [group.label]: !current[group.label] }))}
-                    className="mb-1 flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]"
-                  >
-                    {group.label}
-                    <ChevronDown className={cn("h-3.5 w-3.5 transition", open ? "rotate-0" : "-rotate-90")} />
-                  </button>
-                )}
-                {open
-                  ? group.items.map((item) => {
-                      const active =
-                        item.href === "/"
-                          ? pathname === "/"
-                          : pathname === item.href || pathname.startsWith(`${item.href}/`);
-                      const Icon = item.icon;
-                      return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          title={item.label}
-                          className={cn(
-                            "mb-0.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition",
-                            collapsed && "justify-center px-2",
-                            active
-                              ? "bg-azure-50 font-semibold text-azure-700"
-                              : "text-slate-600 hover:bg-white/60 hover:text-ink",
-                          )}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" />
-                          {collapsed ? null : item.label}
-                        </Link>
-                      );
-                    })
-                  : null}
-              </div>
-            );
-          })}
+        <div className="upper side-label">Revenue operation</div>
+        <nav aria-label="Primary workspaces">
+          {visible
+            .filter((workspace) => workspace.id !== "settings")
+            .map((workspace) => {
+              const open = current?.id === workspace.id;
+              return (
+                <div key={workspace.id}>
+                  <a className={cn("nav-item", open && "active")} href={workspace.children[0]?.href ?? workspace.href}>
+                    <Icon name={WORKSPACE_ICON[workspace.id] ?? "document"} />
+                    {workspace.label}
+                  </a>
+                  {open ? (
+                    <div className="nav-sub">
+                      {workspace.children.map((item) => (
+                        <a key={item.href} className={pathname === item.href ? "active" : ""} href={item.href}>
+                          {item.label}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
         </nav>
-        <div className="border-t border-[var(--line)] p-2">
-          <button
-            type="button"
-            onClick={() => setCollapsed((value) => !value)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs text-[var(--muted)] hover:bg-white/60"
-          >
-            {collapsed ? <PanelLeft className="h-4 w-4" /> : <><ChevronLeft className="h-4 w-4" /> Collapse</>}
+        <div className="side-bottom">
+          <a className={cn("nav-item", current?.id === "settings" && "active")} href="/settings/company">
+            <Icon name="settings" />
+            Settings
+          </a>
+          {current?.id === "settings" ? (
+            <div className="nav-sub">
+              {visible.find((workspace) => workspace.id === "settings")?.children.map((item) => (
+                <a key={item.href} className={pathname === item.href ? "active" : ""} href={item.href}>
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          ) : null}
+          <a className="nav-item" href="/flow">
+            <Icon name="workflow" />
+            Revenue journey
+          </a>
+          <a className="nav-item" href="/screens">
+            <Icon name="eye" />
+            All page designs
+          </a>
+          <div className="operator">
+            <span className="avatar">{mark}</span>
+            <div>
+              {user.name}
+              <div className="small muted">{role}</div>
+            </div>
+          </div>
+          <button className="sign-out" onClick={() => void logout()}>
+            Sign out
           </button>
         </div>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="glass-strong sticky top-0 z-30 flex items-center justify-between border-b px-6 py-3">
-          <button
-            onClick={() => setPalette(true)}
-            className="flex min-w-[280px] items-center gap-2 rounded-lg border border-[var(--line)] bg-white/70 px-3 py-2 text-left text-sm text-[var(--muted)] hover:border-azure-600/40"
-          >
-            <Search className="h-4 w-4" />
-            Search accounts, leads, deals…
-            <span className="ml-auto text-[11px] text-slate-400">⌘K</span>
+      <div className="app-main">
+        <header className="topbar">
+          <button className="btn iconbtn mobile-menu" aria-label="Open navigation" onClick={() => setNavOpen(true)}>
+            <Icon name="menu" />
           </button>
-          <div className="flex items-center gap-3 text-sm">
-            <button
-              className="rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-600"
-              onClick={() => setCopilot(true)}
-            >
-              Copilot
+          <div className="crumb">
+            <span>{trail[0]?.label ?? "Command Centre"}</span>
+            <Icon name="chevron" />
+            <span>{trail[trail.length - 1]?.label ?? "Overview"}</span>
+          </div>
+          <div className="top-right">
+            <button className="searchbutton" onClick={() => setPalette(true)}>
+              <Icon name="search" />
+              <span>Find a page or record</span>
+              <kbd>⌘ K</kbd>
             </button>
-            <div className="text-right">
-              <p className="font-medium text-ink">{user.name}</p>
-              <p className="text-[11px] text-[var(--muted)]">{user.roles[0]}</p>
-            </div>
-            <button
-              className="text-[var(--muted)] hover:text-ink"
-              onClick={() => void logout().then(() => router.push("/login"))}
+            <select
+              className="role-pick"
+              aria-label="Workspace role"
+              value={role}
+              onChange={(event) => {
+                const next = ROLE_PREVIEWS.find((item) => item === event.target.value);
+                if (next) setRole(next);
+              }}
             >
-              Sign out
+              {ROLE_PREVIEWS.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+            <a className="btn iconbtn" href="/automation/approvals" aria-label="Open decisions">
+              <Icon name="bell" />
+            </a>
+            <button
+              className="btn iconbtn"
+              aria-label="Open contextual copilot"
+              onClick={() => {
+                setSeed("");
+                setCopilot(true);
+              }}
+            >
+              <Icon name="spark" />
             </button>
+            <span className="avatar">{mark}</span>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1400px] flex-1 px-6 py-7">{children}</main>
+        <main className="content" id="main">
+          {children}
+        </main>
       </div>
       <CommandPalette
         open={palette}
         onClose={() => setPalette(false)}
-        onAsk={(q) => {
-          setSeed(q);
+        onAsk={(query) => {
+          setSeed(query);
           setCopilot(true);
         }}
       />
       <CopilotDrawer open={copilot} seed={seed} onClose={() => setCopilot(false)} />
     </div>
+  );
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <RolePreviewProvider>
+      <ShellFrame>{children}</ShellFrame>
+    </RolePreviewProvider>
   );
 }

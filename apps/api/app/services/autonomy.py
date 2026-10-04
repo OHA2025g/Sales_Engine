@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.models.ai import AIApproval
 from app.models.autonomy import AutonomousRun, AutonomousRunStep, AutopilotSettings
-from app.models.crm import Account, Contact, Lead
+from app.models.crm import Contact, Lead, Opportunity, Task
 from app.models.identity import User
-from app.models.lifecycle import Campaign
+from app.models.lifecycle import Campaign, Quote
 from app.services.ai_budget import ai_budget_reason
 from app.services.audit import emit_event, write_audit
 from app.services.automation_state import get_state
@@ -22,6 +22,7 @@ from app.services.autopilot_settings import (
 from app.services.crm import add_activity
 from app.services.discovery import run_discovery
 from app.services.idempotency import claim_key, lock_row
+from app.services.lifecycle import score_deal
 from app.services.market import refresh_account_intelligence
 from app.services.orchestrator import due_sequence_work, process_pending_events
 from app.services.provider_ops import is_circuit_open
@@ -173,9 +174,9 @@ def run_autonomous_cycle(
     market_created = {"account_signals": 0, "intent_signals": 0, "technology_signals": 0, "triggers": 0}
     accounts_scanned = 0
     if settings.market_monitoring_enabled:
-        accounts = db.scalars(
-            select(Account).where(Account.tenant_id == tenant_id, Account.deleted_at.is_(None)).limit(20)
-        ).all()
+        from app.services.workflow_surface import next_scan_accounts
+
+        accounts = next_scan_accounts(db, tenant_id=tenant_id, actor_id=actor_id, limit=20)
         accounts_scanned = len(accounts)
         for account in accounts:
             result = refresh_account_intelligence(db, tenant_id=tenant_id, actor_id=actor_id, account=account)
@@ -189,7 +190,13 @@ def run_autonomous_cycle(
         name="refresh_markets",
         position=2,
         status="completed" if settings.market_monitoring_enabled else "skipped",
-        detail={"accounts_scanned": accounts_scanned, "created": market_created, "provider": "mock-intelligence", "is_mock": True},
+        detail={
+            "accounts_scanned": accounts_scanned,
+            "created": market_created,
+            "provider": "mock-intelligence",
+            "is_mock": True,
+            "mock_evidence_ignored": True,
+        },
     )
 
     leads = db.scalars(
@@ -241,14 +248,16 @@ def run_autonomous_cycle(
         detail=due,
     )
 
-    campaigns = db.scalars(
-        select(Campaign).where(
-            Campaign.tenant_id == tenant_id,
-            Campaign.deleted_at.is_(None),
-            Campaign.status == "draft",
-            Campaign.channel.in_(["linkedin", "instagram"]),
-        )
-    ).all()
+    campaigns = []
+    if settings.campaign_planning_enabled:
+        campaigns = db.scalars(
+            select(Campaign).where(
+                Campaign.tenant_id == tenant_id,
+                Campaign.deleted_at.is_(None),
+                Campaign.status == "draft",
+                Campaign.channel.in_(["linkedin", "instagram"]),
+            )
+        ).all()
     queued_ads = 0
     for campaign in campaigns:
         provider_key = "linkedin-ads" if campaign.channel == "linkedin" else "meta-ads"
@@ -284,6 +293,42 @@ def run_autonomous_cycle(
             )
         )
         queued_ads += 1
+    if settings.deal_monitoring_enabled:
+        open_deals = db.scalars(
+            select(Opportunity).where(
+                Opportunity.tenant_id == tenant_id,
+                Opportunity.deleted_at.is_(None),
+                Opportunity.stage.notin_(["closed_won", "closed_lost"]),
+            ).limit(50)
+        ).all()
+        for deal in open_deals:
+            score_deal(db, tenant_id, deal)
+    if settings.proposal_preparation_enabled:
+        proposal_deals = db.scalars(
+            select(Opportunity).where(
+                Opportunity.tenant_id == tenant_id,
+                Opportunity.deleted_at.is_(None),
+                Opportunity.stage == "proposal",
+            ).limit(20)
+        ).all()
+        for deal in proposal_deals:
+            existing_quote = db.scalar(
+                select(Quote).where(Quote.tenant_id == tenant_id, Quote.opportunity_id == deal.id, Quote.deleted_at.is_(None))
+            )
+            if existing_quote is None:
+                db.add(
+                    Task(
+                        tenant_id=tenant_id,
+                        created_by=actor_id,
+                        title=f"Prepare proposal for {deal.name}",
+                        description="Proposal preparation is enabled. A person still approves terms and discounts.",
+                        status="open",
+                        priority="high",
+                        entity_type="opportunity",
+                        entity_id=str(deal.id),
+                        source="workflow",
+                    )
+                )
     queued_voice = 0
     if settings.voice_approval_required and not is_circuit_open(db, tenant_id=tenant_id, provider="voice"):
         contacts = db.scalars(

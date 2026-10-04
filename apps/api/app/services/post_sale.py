@@ -23,6 +23,81 @@ from app.services.nba import generate_for_customer
 from app.services.onboarding import start_onboarding
 from app.services.qbr import prepare_qbr
 from app.services.renewal import emit_windows, parse_windows, prepare_renewal
+from app.services.revenue_ledger import (
+    record_cohort_movement,
+    remember_opening_cohort,
+    rollup_customer_arr,
+    stamp_contract_line,
+)
+
+
+def _append_opportunity_lines(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    contract: Contract,
+    customer: Customer,
+    opportunity: Opportunity,
+) -> None:
+    already = db.scalar(
+        select(ContractLine).where(
+            ContractLine.tenant_id == tenant_id,
+            ContractLine.contract_id == contract.id,
+            ContractLine.source_opportunity_id == opportunity.id,
+            ContractLine.deleted_at.is_(None),
+        )
+    )
+    if already is not None:
+        _note_revenue(db, tenant_id=tenant_id, actor_id=actor_id, customer=customer)
+        return
+    quote = db.scalar(
+        select(Quote)
+        .where(Quote.tenant_id == tenant_id, Quote.opportunity_id == opportunity.id, Quote.deleted_at.is_(None))
+        .order_by(Quote.created_at.desc())
+    )
+    if quote:
+        for line in db.scalars(select(QuoteLine).where(QuoteLine.quote_id == quote.id, QuoteLine.deleted_at.is_(None))).all():
+            row = ContractLine(
+                tenant_id=tenant_id,
+                created_by=actor_id,
+                contract_id=contract.id,
+                product_id=line.product_id,
+                quantity=line.quantity,
+                unit_price=line.unit_price,
+                line_total=line.line_total,
+                source_opportunity_id=opportunity.id,
+            )
+            db.add(row)
+            db.flush()
+            stamp_contract_line(db, row, opportunity_id=opportunity.id)
+    else:
+        db.add(
+            ContractLine(
+                tenant_id=tenant_id,
+                created_by=actor_id,
+                contract_id=contract.id,
+                description=f"Booking {opportunity.id}",
+                quantity=0,
+                unit_price=opportunity.amount,
+                line_total=opportunity.amount,
+                billing_kind="one_time",
+                annualized_amount=Decimal("0"),
+                source_opportunity_id=opportunity.id,
+            )
+        )
+    _note_revenue(db, tenant_id=tenant_id, actor_id=actor_id, customer=customer)
+
+
+def _note_revenue(db: Session, *, tenant_id: UUID, actor_id: UUID, customer: Customer) -> None:
+    before = Decimal(str(customer.arr or 0))
+    after = rollup_customer_arr(db, tenant_id=tenant_id, customer=customer)
+    remember_opening_cohort(db, tenant_id=tenant_id, actor_id=actor_id, customer=customer)
+    delta = after - before
+    if before > 0 and delta > 0:
+        record_cohort_movement(db, tenant_id=tenant_id, actor_id=actor_id, kind="expansion", amount=delta)
+    elif before > 0 and delta < 0:
+        record_cohort_movement(db, tenant_id=tenant_id, actor_id=actor_id, kind="contraction", amount=abs(delta))
 
 
 def mint_contract(db: Session, *, tenant_id: UUID, actor_id: UUID, customer: Customer, account: Account, opportunity: Opportunity) -> Contract:
@@ -35,6 +110,7 @@ def mint_contract(db: Session, *, tenant_id: UUID, actor_id: UUID, customer: Cus
     )
     if existing is not None:
         customer.contract_id = existing.id
+        _append_opportunity_lines(db, tenant_id=tenant_id, actor_id=actor_id, contract=existing, customer=customer, opportunity=opportunity)
         return existing
     quote = db.scalar(
         select(Quote)
@@ -64,18 +140,34 @@ def mint_contract(db: Session, *, tenant_id: UUID, actor_id: UUID, customer: Cus
     db.flush()
     if quote:
         for line in db.scalars(select(QuoteLine).where(QuoteLine.quote_id == quote.id, QuoteLine.deleted_at.is_(None))).all():
-            db.add(
-                ContractLine(
-                    tenant_id=tenant_id,
-                    created_by=actor_id,
-                    contract_id=contract.id,
-                    product_id=line.product_id,
-                    quantity=line.quantity,
-                    unit_price=line.unit_price,
-                    line_total=line.line_total,
-                )
+            row = ContractLine(
+                tenant_id=tenant_id,
+                created_by=actor_id,
+                contract_id=contract.id,
+                product_id=line.product_id,
+                quantity=line.quantity,
+                unit_price=line.unit_price,
+                line_total=line.line_total,
+                source_opportunity_id=opportunity.id,
             )
+            db.add(row)
+            stamp_contract_line(db, row, opportunity_id=opportunity.id)
+    else:
+        booking = ContractLine(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            contract_id=contract.id,
+            description=f"Booking {opportunity.id}",
+            quantity=0,
+            unit_price=opportunity.amount,
+            line_total=opportunity.amount,
+            billing_kind="one_time",
+            annualized_amount=Decimal("0"),
+            source_opportunity_id=opportunity.id,
+        )
+        db.add(booking)
     customer.contract_id = contract.id
+    _note_revenue(db, tenant_id=tenant_id, actor_id=actor_id, customer=customer)
     return contract
 
 
@@ -86,7 +178,7 @@ def ensure_renewal(db: Session, *, tenant_id: UUID, actor_id: UUID, customer: Cu
     if existing is not None:
         if contract:
             existing.contract_id = contract.id
-            existing.current_arr = contract.total_value or existing.current_arr
+            existing.current_arr = customer.arr or existing.current_arr
         return existing
     end = contract.end_date if contract and contract.end_date else (date.today() + timedelta(days=365))
     renewal = Renewal(
@@ -95,7 +187,7 @@ def ensure_renewal(db: Session, *, tenant_id: UUID, actor_id: UUID, customer: Cu
         customer_id=customer.id,
         account_id=account.id,
         renewal_date=end,
-        current_arr=contract.total_value if contract and contract.total_value is not None else (customer.arr or Decimal("0")),
+        current_arr=customer.arr or Decimal("0"),
         status="monitoring",
         owner_id=customer.owner_id,
         contract_id=contract.id if contract else None,

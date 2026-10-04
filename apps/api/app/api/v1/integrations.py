@@ -46,7 +46,15 @@ from app.services.google_oauth import (
 )
 from app.services.inbox import persist_inbound, record_inbox_event
 from app.services.orchestrator import process_pending_events
-from app.services.provider_accounts import list_accounts, public_account, upsert_token_account
+from app.services.provider_accounts import (
+    GOOGLE_CALENDAR_SCOPES,
+    GOOGLE_MAIL_SCOPES,
+    connected_google_account,
+    has_scopes,
+    list_accounts,
+    public_account,
+    upsert_token_account,
+)
 from app.services.provider_provision import channel_modes, provision_env_credentials
 from app.services.query import get_owned
 from app.services.webhook_routes import demo_routing_token
@@ -62,6 +70,45 @@ def list_integrations(
 ) -> Envelope[list[IntegrationAccountOut]]:
     rows = [IntegrationAccountOut.model_validate(public_account(row)) for row in list_accounts(db, ctx.tenant_id)]
     return Envelope(data=rows, meta=Meta(total=len(rows)))
+
+
+@router.get("/channels", response_model=Envelope[dict])
+def integration_channels(
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("integrations.read"))],
+) -> Envelope[dict]:
+    cfg = get_settings()
+    autopilot = get_or_create_settings(db, tenant_id=ctx.tenant_id)
+    google = connected_google_account(db, ctx.tenant_id)
+    return Envelope(
+        data={
+            "channels": channel_modes(db, ctx.tenant_id),
+            "google": {
+                "oauth_ready": google_configured(),
+                "mail": bool(google and has_scopes(google, GOOGLE_MAIL_SCOPES)),
+                "calendar": bool(google and has_scopes(google, GOOGLE_CALENDAR_SCOPES)),
+            },
+            "posting": {
+                "linkedin_ads": cfg.linkedin_ads_configured,
+                "linkedin": cfg.linkedin_posting_configured,
+                "meta_ads": cfg.meta_ads_configured,
+                "meta_ads_mode": cfg.meta_ads_mode,
+                "meta_page": cfg.meta_page_posting_configured,
+                "instagram": cfg.instagram_posting_configured,
+                "discovery": cfg.apify_configured,
+                "gemini": cfg.gemini_configured,
+                "voice_widget": bool(
+                    cfg.dograh_embed_token.strip() and (cfg.dograh_voice_widget_src.strip() or cfg.dograh_api_base.strip())
+                ),
+                "voice_agent": cfg.dograh_configured,
+            },
+            "signals": {
+                "usage": bool(autopilot.usage_live_enabled),
+                "support": bool(autopilot.support_live_enabled),
+                "finance": bool(autopilot.finance_live_enabled),
+            },
+        }
+    )
 
 
 @router.get("/providers", response_model=Envelope[list[ProviderHealthOut]])

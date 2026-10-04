@@ -1,8 +1,9 @@
 "use client";
 
 import { DataTable } from "@/components/data-table";
+import { Go, Panel, Stats } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
-import { DeniedState, EmptyState, ErrorState, LoadingState } from "@/components/states";
+import { DeniedState, ErrorState, LoadingState } from "@/components/states";
 import { Badge, Button } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { money, pct } from "@/lib/format";
@@ -37,35 +38,36 @@ export default function ForecastPage() {
         subtitle="Committed, pipeline, and weighted values come from open opportunities. Win rate is won / decided. Not ML."
         actions={<Button onClick={() => refresh.mutate()} disabled={refresh.isPending}>Snapshot now</Button>}
       />
-      {latest ? (
-        <div className="mb-6 grid gap-4 md:grid-cols-4">
-          {[
-            ["Committed", money(latest.committed)],
-            ["Weighted", money(latest.weighted)],
-            ["Pipeline", money(latest.pipeline)],
-            ["Win rate", pct(latest.win_rate)],
-          ].map(([label, value]) => (
-            <div key={label} className="panel p-5">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">{label}</p>
-              <p className="mt-3 text-3xl font-semibold text-navy">{value}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {rows.length === 0 ? (
-        <EmptyState title="No snapshots" body="Take a snapshot. The API will not invent coverage." />
-      ) : (
-        <DataTable
-          rows={rows}
-          columns={[
-            { key: "period", header: "Period", cell: (row) => row.period },
-            { key: "committed", header: "Committed", cell: (row) => money(row.committed) },
-            { key: "weighted", header: "Weighted", cell: (row) => money(row.weighted) },
-            { key: "win", header: "Win rate", cell: (row) => pct(row.win_rate) },
-            { key: "ver", header: "Version", cell: (row) => <Badge>{row.version}</Badge> },
-          ]}
-        />
-      )}
+      <Stats
+        items={[
+          { name: "Commit forecast", value: latest ? money(latest.committed) : "—", note: latest?.period || "No snapshot yet" },
+          { name: "Best-case pipeline", value: latest ? money(latest.pipeline) : "—", note: "Qualified period opportunities" },
+          { name: "Weighted forecast", value: latest ? money(latest.weighted) : "—", note: "Explicit rules · not trained ML" },
+          { name: "Win rate", value: latest ? pct(latest.win_rate) : "—", note: "Won divided by decided" },
+        ]}
+      />
+      <div className="ds-grid wide section-gap">
+        <Panel title="Period snapshots" extra={<Go href="/pipeline">Inspect contributing pipeline</Go>} body={false}>
+          {rows.length === 0 ? (
+            <div className="empty"><h3>No snapshots</h3><p>Take a snapshot. The API will not invent coverage.</p></div>
+          ) : (
+            <DataTable
+              bare
+              rows={rows}
+              columns={[
+                { key: "period", header: "Period", cell: (row) => row.period },
+                { key: "committed", header: "Committed", cell: (row) => money(row.committed) },
+                { key: "weighted", header: "Weighted", cell: (row) => money(row.weighted) },
+                { key: "win", header: "Win rate", cell: (row) => pct(row.win_rate) },
+                { key: "ver", header: "Version", cell: (row) => <Badge>{row.version}</Badge> },
+              ]}
+            />
+          )}
+        </Panel>
+        <Panel title="How this forecast is built">
+          <p className="small muted">Each total reconciles to opportunities in the selected period. Stage totals are aggregated, not overwritten. Accepted business stays separate from pipeline.</p>
+        </Panel>
+      </div>
     </div>
   );
 }

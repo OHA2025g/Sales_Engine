@@ -56,6 +56,8 @@ export default function PlaybooksPage() {
         eyebrow="Phase 22"
         title="Playbooks"
         subtitle="Runs persist. Allowed actions: create task, write activity, request approval. No live send."
+        nextHref="/playbooks/builder"
+        nextLabel="Playbook builder"
         actions={can("revops.write") ? <Button onClick={() => setOpen(true)}>Run playbook</Button> : null}
       />
       {rows.length === 0 ? (

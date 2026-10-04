@@ -13,6 +13,7 @@ from app.services.ml.history import record_opportunity_fields
 from app.services.ml.labels import ResolvedLabel, upsert_outcome
 from app.services.ml.timeutil import now_utc
 from app.services.query import get_owned
+from app.services.revenue_ledger import record_cohort_movement
 
 LOSS_REASONS = {
     "pricing",
@@ -106,6 +107,8 @@ def mark_churned(
     customer = get_owned(db, Customer, tenant_id, customer_id)
     customer.status = "churned"
     customer.churn_reason = reason
+    if customer.arr and customer.arr > 0:
+        record_cohort_movement(db, tenant_id=tenant_id, actor_id=actor_id, kind="churn", amount=customer.arr)
     upsert_outcome(
         db,
         tenant_id=tenant_id,

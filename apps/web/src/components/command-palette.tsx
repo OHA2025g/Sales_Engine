@@ -3,42 +3,10 @@
 import { api } from "@agrayian/sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { PAGES } from "@/lib/navigation";
 import type { SearchHit } from "@/lib/types";
 
-const ROUTES = [
-  { href: "/", label: "Home" },
-  { href: "/automation/runs", label: "Autopilot" },
-  { href: "/automation/approvals", label: "Approvals" },
-  { href: "/leads", label: "Leads" },
-  { href: "/accounts", label: "Accounts" },
-  { href: "/contacts", label: "Contacts" },
-  { href: "/pipeline", label: "Pipeline" },
-  { href: "/customers", label: "Customers" },
-  { href: "/tasks", label: "Tasks" },
-  { href: "/imports", label: "Import" },
-  { href: "/icps", label: "Who we sell to" },
-  { href: "/market", label: "Market" },
-  { href: "/market/signals", label: "Signals" },
-  { href: "/acquisition", label: "Acquisition" },
-  { href: "/campaigns", label: "Campaigns" },
-  { href: "/social", label: "Social posts" },
-  { href: "/content", label: "Content" },
-  { href: "/sequences", label: "Sequences" },
-  { href: "/conversations", label: "Conversations" },
-  { href: "/meetings", label: "Meetings" },
-  { href: "/deals", label: "Deals" },
-  { href: "/commercial", label: "Commercial" },
-  { href: "/forecast", label: "Forecast" },
-  { href: "/success", label: "Success" },
-  { href: "/renewals", label: "Renewals" },
-  { href: "/expansion", label: "Expansion" },
-  { href: "/advocacy", label: "Advocacy" },
-  { href: "/playbooks", label: "Playbooks" },
-  { href: "/models", label: "Models" },
-  { href: "/admin/teams", label: "Teams" },
-  { href: "/intelligence", label: "Copilot" },
-  { href: "/knowledge", label: "Knowledge" },
-];
+const ROUTES = PAGES.map((page) => ({ href: page.href, label: `${page.workspace} · ${page.label}` }));
 
 const ENTITY_PATH: Record<string, string> = {
   account: "/accounts",
@@ -95,20 +63,20 @@ export function CommandPalette({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-navy/25 px-4 pt-[12vh] backdrop-blur-sm">
-      <div className="glass-strong w-full max-w-2xl overflow-hidden rounded-2xl">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 px-4 pt-[12vh]">
+      <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-[var(--line)] bg-[#10151E] shadow-lift">
         <input
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search accounts, leads, deals…"
+          placeholder="Find a page or record"
           className="w-full border-b border-[var(--line)] bg-transparent px-5 py-4 text-sm outline-none"
         />
         <div className="max-h-80 overflow-auto p-2">
           {pages.map((item) => (
             <button
               key={item.href}
-              className="flex w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-azure-50/80"
+              className="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-raised"
               onClick={() => {
                 router.push(item.href);
                 onClose();
@@ -120,7 +88,7 @@ export function CommandPalette({
           {hits.map((hit) => (
             <button
               key={`${hit.entity_type}-${hit.id}`}
-              className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-azure-50/80"
+              className="flex w-full flex-col rounded-md px-3 py-2 text-left hover:bg-raised"
               onClick={() => {
                 router.push(`${ENTITY_PATH[hit.entity_type]}/${hit.id}`);
                 onClose();

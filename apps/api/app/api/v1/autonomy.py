@@ -15,9 +15,8 @@ from app.core.rate_limit import enforce_rate_limit
 from app.core.security import decode_access_token
 from app.db.session import get_db, get_session
 from app.db.tenant_context import set_tenant_context
-from app.models.identity import User
-from app.services.rbac import user_permissions
 from app.models.autonomy import AutonomousRun, AutonomousRunStep
+from app.models.identity import User
 from app.schemas.autonomy import (
     AutonomyActivityOut,
     AutonomyPauseIn,
@@ -39,6 +38,7 @@ from app.services.autopilot_status import activity_feed, build_status, entity_tr
 from app.services.journey_trace import full_trace
 from app.services.orchestrator import retry_entity
 from app.services.query import get_owned, paginate
+from app.services.rbac import user_permissions
 
 router = APIRouter(prefix="/autonomy", tags=["autonomy"])
 

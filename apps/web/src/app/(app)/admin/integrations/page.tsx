@@ -163,7 +163,7 @@ function IntegrationsBody() {
           <p className="mb-3 text-sm font-semibold text-navy">Tenant ads / voice credentials</p>
           <div className="flex flex-wrap items-end gap-2">
             <select
-              className="rounded-md border border-[var(--line)] bg-white px-2 py-1 text-xs"
+              className="rounded-md border border-[var(--line)] bg-[#101722] px-2 py-1 text-xs"
               value={credProvider}
               onChange={(event) => setCredProvider(event.target.value)}
               aria-label="Credential provider"
@@ -175,13 +175,13 @@ function IntegrationsBody() {
               ))}
             </select>
             <input
-              className="min-w-[12rem] flex-1 rounded-md border border-[var(--line)] bg-white px-2 py-1 text-xs"
+              className="min-w-[12rem] flex-1 rounded-md border border-[var(--line)] bg-[#101722] px-2 py-1 text-xs"
               placeholder="Access token"
               value={credToken}
               onChange={(event) => setCredToken(event.target.value)}
             />
             <input
-              className="min-w-[12rem] flex-1 rounded-md border border-[var(--line)] bg-white px-2 py-1 text-xs"
+              className="min-w-[12rem] flex-1 rounded-md border border-[var(--line)] bg-[#101722] px-2 py-1 text-xs"
               placeholder='Extra JSON. Dograh: {"agent_uuid":"...","api_base":"http://host:port"}'
               value={credExtra}
               onChange={(event) => setCredExtra(event.target.value)}
@@ -260,7 +260,7 @@ function IntegrationsBody() {
                       Ignore
                     </Button>
                     <input
-                      className="min-w-[12rem] flex-1 rounded-md border border-[var(--line)] bg-white px-2 py-1 text-xs"
+                      className="min-w-[12rem] flex-1 rounded-md border border-[var(--line)] bg-[#101722] px-2 py-1 text-xs"
                       placeholder="Customer id to change"
                       value={changeTargets[row.id] ?? ""}
                       onChange={(event) => setChangeTargets((current) => ({ ...current, [row.id]: event.target.value }))}

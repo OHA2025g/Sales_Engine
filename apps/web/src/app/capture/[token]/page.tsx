@@ -63,20 +63,34 @@ export default function PublicCapturePage() {
   }
 
   return (
-    <main className="mx-auto max-w-md px-6 py-16">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">Inbound</p>
-      <h1 className="mt-3 text-2xl font-semibold text-navy">Talk to us</h1>
-      <form className="mt-8 space-y-4" onSubmit={submit}>
-        <label className="block text-sm">First name<input className="mt-1 w-full rounded-md border px-3 py-2" name="first_name" required /></label>
-        <label className="block text-sm">Last name<input className="mt-1 w-full rounded-md border px-3 py-2" name="last_name" required /></label>
-        <label className="block text-sm">Email<input className="mt-1 w-full rounded-md border px-3 py-2" name="email" type="email" required /></label>
-        <label className="block text-sm">Company<input className="mt-1 w-full rounded-md border px-3 py-2" name="company_name" /></label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="consent_email" value="true" /> I consent to email</label>
-        <button className="w-full rounded-md bg-navy px-4 py-2 text-white" disabled={pending} type="submit">
-          Submit
-        </button>
-      </form>
-      {status ? <p className="mt-4 text-sm">{status}</p> : null}
+    <main className="capture-page">
+      <section className="panel capture-card">
+        <div className="public-brand">
+          <span className="brand-mark"><i /><i /><i /></span>
+          AGRAYIAN AI LABS
+        </div>
+        <div className="eyebrow">Inbound</div>
+        <h1>Discuss your operational workflow</h1>
+        <p className="muted" style={{ margin: "15px 0 26px" }}>
+          Share the process you want to improve. A human follows only if you consent.
+        </p>
+        <form className="stack" onSubmit={submit}>
+          <div className="form-grid">
+            <label className="field">First name<input name="first_name" required autoComplete="given-name" /></label>
+            <label className="field">Last name<input name="last_name" required autoComplete="family-name" /></label>
+            <label className="field">Work email<input name="email" type="email" required autoComplete="email" /></label>
+            <label className="field">Company<input name="company_name" autoComplete="organization" /></label>
+          </div>
+          <label className="ds-flex small muted">
+            <input className="checkbox" type="checkbox" name="consent_email" value="true" />
+            I agree to be contacted about this request.
+          </label>
+          <button className="btn primary" disabled={pending} type="submit">
+            {pending ? "Submitting…" : "Submit request"}
+          </button>
+        </form>
+        {status ? <p className="small" style={{ marginTop: 16 }}>{status}</p> : null}
+      </section>
     </main>
   );
 }

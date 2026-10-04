@@ -15,17 +15,19 @@ export function DataTable<T extends { id: string }>({
   columns,
   rows,
   href,
+  bare = false,
 }: {
   columns: Column<T>[];
   rows: T[];
   href?: (row: T) => string;
+  bare?: boolean;
 }) {
   const router = useRouter();
-  return (
-    <div className="panel overflow-hidden">
-      <div className="max-h-[70vh] overflow-auto">
+  const table = (
+    <>
+      <div className="table-wrap">
         <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 z-10 border-b border-[var(--line)] bg-white/80 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] backdrop-blur-md">
+          <thead className="sticky top-0 z-10 border-b border-[var(--line)] bg-[#101722] text-xs font-semibold text-[var(--meta)]">
             <tr>
               {columns.map((column) => (
                 <th key={column.key} className={cn("px-4 py-2.5", column.className)}>
@@ -39,11 +41,14 @@ export function DataTable<T extends { id: string }>({
               <tr
                 key={row.id}
                 className={cn(
-                  "border-t border-[var(--line)] bg-white/40 transition hover:bg-azure-50/70",
+                  "border-t border-[var(--line)] transition hover:bg-raised",
                   href ? "cursor-pointer" : "",
                 )}
-                onClick={() => {
-                  if (href) router.push(href(row));
+                onClick={(event) => {
+                  if (!href) return;
+                  const target = event.target;
+                  if (target instanceof HTMLElement && target.closest("button, a, input, select, textarea")) return;
+                  router.push(href(row));
                 }}
               >
                 {columns.map((column) => (
@@ -56,6 +61,14 @@ export function DataTable<T extends { id: string }>({
           </tbody>
         </table>
       </div>
-    </div>
+      {bare ? null : (
+        <footer className="table-footer">
+          <span>{rows.length} records</span>
+          <span>Record selection opens the relevant workspace</span>
+        </footer>
+      )}
+    </>
   );
+  if (bare) return table;
+  return <div className="panel">{table}</div>;
 }

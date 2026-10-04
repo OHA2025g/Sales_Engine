@@ -1,6 +1,7 @@
 "use client";
 
 import { DataTable } from "@/components/data-table";
+import { Go, Notice } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
 import { DeniedState, EmptyState, ErrorState, LoadingState } from "@/components/states";
 import { Badge, Button, Drawer, Field, FormActions, Input, Select, Textarea } from "@/components/ui";
@@ -8,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { labelize } from "@/lib/format";
 import { api } from "@agrayian/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -143,6 +145,33 @@ export default function ContentPage() {
         title="Content"
         subtitle="Gemini writes the full post and ad from your company and product. A short note is optional. It reads what was already sent so the next draft is different. Nothing goes out until you publish it."
       />
+      <Notice
+        title="Grounded content, connected to a campaign"
+        body="Every asset retains its brief, approved claims, version, reviewer, and distribution result."
+      />
+      <div className="ds-grid three">
+        {rows.length === 0 ? (
+          <div className="panel empty">
+            <h3>No assets yet</h3>
+            <p>Generate a draft from the company profile. Nothing is published until you send it.</p>
+          </div>
+        ) : (
+          rows.map((row) => (
+            <section className="panel workspace-card" key={row.id}>
+              <div className="between">
+                <span className="upper">{labelize(row.channel || row.kind)}</span>
+                <Badge tone={tone(row.status)}>{labelize(row.status)}</Badge>
+              </div>
+              <h2>{row.headline || "Untitled asset"}</h2>
+              <p>{row.brief || row.cta || "No brief recorded"}</p>
+              <div className="ds-flex">
+                <Go href={`/content/${row.id}`}>Open editor</Go>
+                <Go href="/campaigns">View campaign</Go>
+              </div>
+            </section>
+          ))
+        )}
+      </div>
       <form
         className="panel mb-6 grid gap-4 p-4 md:grid-cols-2"
         onSubmit={profileForm.handleSubmit((values) => saveProfile.mutate(values))}
@@ -239,7 +268,7 @@ export default function ContentPage() {
             {
               key: "headline",
               header: "Headline",
-              cell: (row) => row.headline || row.body || row.brief,
+              cell: (row) => <Link href={`/content/${row.id}`}>{row.headline || row.body || row.brief}</Link>,
             },
             {
               key: "status",

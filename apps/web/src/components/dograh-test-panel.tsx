@@ -217,7 +217,7 @@ export function DograhTestPanel() {
             {mode === "chat" ? (chatOpen ? "Chat is open" : "Start chat") : voiceLabel}
           </Button>
           {mode === "chat" && lines.length > 0 ? (
-            <div className="max-h-80 space-y-2 overflow-y-auto rounded-lg border border-[var(--line)] bg-white/80 p-3">
+            <div className="max-h-80 space-y-2 overflow-y-auto rounded-lg border border-[var(--line)] bg-[#101722] p-3">
               {lines.map((line, index) => (
                 <p key={`${line.role}-${index}`} className="text-sm">
                   <span className="font-semibold text-navy">{line.role === "agent" ? "Agent" : "You"}: </span>

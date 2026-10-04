@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
+import { useEffect } from "react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -15,17 +16,13 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "line" }) {
   const styles = {
-    primary: "bg-brand text-white hover:bg-brand-600",
-    ghost: "bg-transparent text-ink hover:bg-azure-50/80",
-    line: "border border-[var(--line-strong)] bg-white/80 text-ink hover:border-azure-600/40 hover:text-azure-700",
+    primary: "primary",
+    ghost: "ghost",
+    line: "",
   }[variant];
   return (
     <button
-      className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-semibold transition disabled:opacity-40",
-        styles,
-        className,
-      )}
+      className={cn("btn", styles, className)}
       {...props}
     />
   );
@@ -39,8 +36,8 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block space-y-1.5">
-      <span className="text-xs font-medium text-[var(--muted)]">{label}</span>
+    <label className="field">
+      <span>{label}</span>
       {children}
     </label>
   );
@@ -50,7 +47,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cn(
-        "w-full rounded-lg border border-[var(--line)] bg-white/90 px-3 py-2.5 text-sm text-ink outline-none placeholder:text-[var(--muted)] focus:border-azure-600 focus:ring-2 focus:ring-azure-600/20",
+        "input",
         className,
       )}
       {...props}
@@ -62,7 +59,7 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
   return (
     <textarea
       className={cn(
-        "w-full rounded-lg border border-[var(--line)] bg-white/90 px-3 py-2.5 text-sm text-ink outline-none focus:border-azure-600 focus:ring-2 focus:ring-azure-600/20",
+        "input",
         className,
       )}
       {...props}
@@ -74,7 +71,7 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
   return (
     <select
       className={cn(
-        "w-full rounded-lg border border-[var(--line)] bg-white/90 px-3 py-2.5 text-sm text-ink outline-none focus:border-azure-600 focus:ring-2 focus:ring-azure-600/20",
+        "input",
         className,
       )}
       {...props}
@@ -90,18 +87,14 @@ export function Badge({
   tone?: "neutral" | "gold" | "mint" | "rose" | "ok" | "blue";
 }) {
   const tones = {
-    neutral: "bg-white/70 text-slate-600",
-    gold: "bg-brand-50 text-brand-700",
-    mint: "bg-brand-50 text-brand-700",
-    rose: "bg-rose-50 text-rose-700",
-    ok: "bg-emerald-50 text-emerald-700",
-    blue: "bg-azure-50 text-azure-700",
+    neutral: "",
+    gold: "warn",
+    mint: "good",
+    rose: "bad",
+    ok: "good",
+    blue: "info",
   };
-  return (
-    <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide", tones[tone])}>
-      {children}
-    </span>
-  );
+  return <span className={cn("tag", tones[tone])}>{children}</span>;
 }
 
 export function Score({ value }: { value: number | null | undefined }) {
@@ -121,9 +114,17 @@ export function Drawer({
   onClose: () => void;
   children: ReactNode;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-navy/20 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50">
       <button className="flex-1" onClick={onClose} aria-label="Close drawer" />
       <aside className="glass-strong h-full w-full max-w-xl overflow-auto border-l p-6">
         <div className="mb-6 flex items-center justify-between">

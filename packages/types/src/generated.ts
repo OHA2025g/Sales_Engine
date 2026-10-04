@@ -109,6 +109,7 @@ export type GeneratedPaths = {
   "/api/v1/lifecycle/conversations/{conversation_id}": "get";
   "/api/v1/lifecycle/deals": "get";
   "/api/v1/lifecycle/deals/rescore": "post";
+  "/api/v1/lifecycle/dograh/browser-test": "get";
   "/api/v1/lifecycle/enrollments": "get";
   "/api/v1/lifecycle/expansion": "get";
   "/api/v1/lifecycle/expansion/refresh": "post";
@@ -188,6 +189,22 @@ export type GeneratedPaths = {
   "/api/v1/tasks": "get, post";
   "/api/v1/tasks/{task_id}": "get, patch";
   "/api/v1/webhooks/{provider}/{routing_token}": "post";
+  "/api/v1/workflow/campaign-plans": "post";
+  "/api/v1/workflow/command": "get";
+  "/api/v1/workflow/events/{event_id}/replay": "post";
+  "/api/v1/workflow/grants": "post";
+  "/api/v1/workflow/invitations": "post";
+  "/api/v1/workflow/invitations/{invitation_id}/accept": "post";
+  "/api/v1/workflow/launch": "get";
+  "/api/v1/workflow/meetings/{meeting_id}/outcome": "post";
+  "/api/v1/workflow/objectives": "post";
+  "/api/v1/workflow/operations": "get";
+  "/api/v1/workflow/operations/evidence": "post";
+  "/api/v1/workflow/opportunities/{opportunity_id}/advance": "post";
+  "/api/v1/workflow/quotes/{quote_id}/accept": "post";
+  "/api/v1/workflow/retention": "get";
+  "/api/v1/workflow/sequences/{sequence_id}/activate": "post";
+  "/api/v1/workflow/users/{user_id}/deactivate": "post";
   "/health": "get";
   "/health/live": "get";
   "/health/ready": "get";
@@ -195,10 +212,11 @@ export type GeneratedPaths = {
   "/ready": "get";
 };
 
-export const generatedPathCount = 193;
+export const generatedPathCount = 210;
 export const generatedSchemaNames = [
   "AbmIn",
   "AbmOut",
+  "AcceptIn",
   "AccountContextOut",
   "AccountIn",
   "AccountLifecycleOut",
@@ -230,6 +248,7 @@ export const generatedSchemaNames = [
   "CampaignMemberIn",
   "CampaignMemberOut",
   "CampaignOut",
+  "CampaignPlanIn",
   "CaptureIn",
   "CaptureOut",
   "CaptureResult",
@@ -261,6 +280,7 @@ export const generatedSchemaNames = [
   "DiscoveryHealthOut",
   "DiscoveryRunIn",
   "DiscoveryRunOut",
+  "DograhBrowserTestOut",
   "EmailDraftRequest",
   "EmailDraftResponse",
   "EmailMessageOut",
@@ -297,6 +317,7 @@ export const generatedSchemaNames = [
   "Envelope_DedupeOut_",
   "Envelope_DiscoveryHealthOut_",
   "Envelope_DiscoveryRunOut_",
+  "Envelope_DograhBrowserTestOut_",
   "Envelope_EmailDraftResponse_",
   "Envelope_EnrollmentOut_",
   "Envelope_EntityAutomationOut_",
@@ -409,6 +430,7 @@ export const generatedSchemaNames = [
   "Envelope_list_WorkflowRunOut__",
   "Envelope_list_dict__",
   "ErrorBody",
+  "EvidenceIn",
   "ExpansionOutcomeIn",
   "ExpansionRecOut",
   "FeedbackIn",
@@ -417,6 +439,7 @@ export const generatedSchemaNames = [
   "ForecastOut",
   "GenerateContentIn",
   "GoogleConnectOut",
+  "GrantIn",
   "HTTPValidationError",
   "HandoffOut",
   "HealthOut",
@@ -430,6 +453,7 @@ export const generatedSchemaNames = [
   "InboxSimulateIn",
   "InboxSimulateOut",
   "IntegrationAccountOut",
+  "InviteIn",
   "KPIOut",
   "KnowledgeHit",
   "KnowledgeUploadResponse",
@@ -448,12 +472,14 @@ export const generatedSchemaNames = [
   "MeetingExtractIn",
   "MeetingIn",
   "MeetingOut",
+  "MeetingOutcomeIn",
   "MeetingTranscriptIn",
   "Meta",
   "MilestoneOut",
   "ModelCardOut",
   "ModelVersionOut",
   "NBAOut",
+  "ObjectiveIn",
   "OpportunityIn",
   "OpportunityOut",
   "OverrideIn",
@@ -471,6 +497,7 @@ export const generatedSchemaNames = [
   "PromoteIn",
   "ProviderActionOut",
   "ProviderHealthOut",
+  "QuoteAcceptIn",
   "QuoteIn",
   "QuoteLineIn",
   "QuoteLineOut",
@@ -496,6 +523,7 @@ export const generatedSchemaNames = [
   "SocialChannelStatus",
   "SocialPostIn",
   "SocialPostOut",
+  "StageAdvanceIn",
   "StageMixOut",
   "SuccessObjectiveOut",
   "SuccessRow",

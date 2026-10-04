@@ -1,10 +1,13 @@
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_ENV_FILE = os.environ.get("AGRAYIAN_ENV_FILE", ".env")
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
     app_name: str = "AGRAYIAN Autonomous Revenue OS"
     environment: str = "development"

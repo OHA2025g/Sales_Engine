@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings as current_settings
 from app.models.ai import AIApproval
-from app.models.crm import Lead, Renewal
-from app.models.lifecycle import Campaign
+from app.models.crm import Customer, Lead, Renewal
+from app.models.lifecycle import Campaign, Quote
 from app.models.signals import ExternalEntityMapping
 from app.services.ads import execute_ads_creative, execute_ads_pause, execute_ads_spend
 from app.services.automation_state import pause_entity, upsert_state
@@ -74,9 +74,65 @@ def _renewal(db: Session, *, tenant_id: UUID, actor_id: UUID, row: AIApproval, p
     return execute_renewal_commercial(db, tenant_id=tenant_id, actor_id=actor_id, approval=row)
 
 
+def _quote_discount(db: Session, *, tenant_id: UUID, actor_id: UUID, row: AIApproval, payload_patch: dict | None = None) -> str:
+    from app.services.lifecycle import recompute_quote
+
+    _ = actor_id
+    payload = {**_payload(row), **(payload_patch or {})}
+    quote_id = payload.get("quote_id") or row.entity_id
+    if not quote_id:
+        return "Action type quote.discount is not executable: quote id is missing."
+    quote = db.get(Quote, UUID(str(quote_id)))
+    if quote is None or quote.tenant_id != tenant_id or quote.deleted_at is not None:
+        return "Action type quote.discount is not executable: quote was not found."
+    bound = int(payload.get("version") or quote.version or 1)
+    if int(quote.version or 1) != bound:
+        return "Stale authorization. The quote version changed after this approval."
+    recompute_quote(db, quote)
+    approved_discount = payload.get("discount_pct")
+    if approved_discount is not None and int(approved_discount) != int(quote.discount_pct):
+        return "Stale authorization. The discount changed after this approval."
+    if quote.discount_pct >= 10 and not quote.approval_required and quote.status == "approved":
+        return f"Quote {quote.id} is already approved at version {quote.version}."
+    quote.status = "approved"
+    quote.approval_required = False
+    return f"Quote {quote.id} approved at version {quote.version}."
+
+
+def _customer_send(db: Session, *, tenant_id: UUID, actor_id: UUID, row: AIApproval, payload_patch: dict | None = None) -> str:
+    from app.providers.email import get_email_provider
+    from app.services.workflow_surface import resolve_customer_contact
+
+    payload = {**_payload(row), **(payload_patch or {})}
+    customer_id = payload.get("customer_id") or row.entity_id
+    try:
+        customer_uuid = UUID(str(customer_id))
+    except ValueError:
+        return "Customer send was not executed: customer id is missing."
+    contact = resolve_customer_contact(db, tenant_id=tenant_id, customer_id=customer_uuid, contact_id=payload.get("contact_id"))
+    if contact is None:
+        return "Customer send was not executed: an authorized contact email is required."
+    customer = db.get(Customer, customer_uuid)
+    if customer is None:
+        return "Customer send was not executed: customer was not found."
+    provider = get_email_provider(db, tenant_id)
+    result = provider.send(
+        to=contact.email,
+        subject=str(payload.get("subject") or row.title),
+        body=str(payload.get("body") or ""),
+    )
+    _ = actor_id
+    if not result.ok:
+        return f"Customer send failed: {result.reason or 'provider refused the message'}."
+    return (
+        f"Customer send delivered to {contact.email}. mock={result.is_mock} "
+        f"provider={result.provider} ref={result.provider_message_id or ''}"
+    )
+
+
 def _send(db: Session, *, tenant_id: UUID, actor_id: UUID, row: AIApproval, payload_patch: dict | None = None) -> str:
     if row.entity_type == "customer":
-        return "Customer communication approved. A mapped contact email is required before provider send."
+        return _customer_send(db, tenant_id=tenant_id, actor_id=actor_id, row=row, payload_patch=payload_patch)
     return execute_email_send(db, tenant_id=tenant_id, actor_id=actor_id, approval=row, payload_patch=payload_patch)
 
 
@@ -132,6 +188,7 @@ HANDLERS: dict[str, Handler] = {
     "calendar.cancel": _calendar_cancel,
     "mapping.confirm": _mapping_confirm,
     "whatsapp.send": _whatsapp,
+    "quote.discount": _quote_discount,
 }
 
 
@@ -172,6 +229,8 @@ def _channel_blocked(db: Session, tenant_id: UUID, action: str) -> str:
         return "Discovery channel is paused."
     if action.startswith("whatsapp.") and settings.whatsapp_channel_paused:
         return "WhatsApp channel is paused."
+    if action.startswith("social.") and settings.social_channel_paused:
+        return "Social channel is paused."
     return ""
 
 
@@ -187,24 +246,58 @@ def dispatch_approval(
 
     blocked = _channel_blocked(db, tenant_id, row.action_type)
     if blocked:
-        return blocked
+        return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message=blocked)
     if row.expires_at is not None:
         expires = row.expires_at
         if expires.tzinfo is None:
             expires = expires.replace(tzinfo=UTC)
         if expires < datetime.now(UTC):
             row.status = "expired"
-            return "Approval expired before execution."
+            return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message="Approval expired before execution.")
     stale = _stale_reason(db, tenant_id, row)
     if stale:
-        return stale
+        return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message=stale)
     action = row.action_type
+    from app.services.autopilot_settings import in_quiet_hours
+
+    if action.endswith(".send") or action.startswith("sequence.email") or action.startswith("social."):
+        settings = get_or_create_settings(db, tenant_id=tenant_id)
+        if in_quiet_hours(settings) and action.endswith(".send"):
+            return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message="Send deferred: quiet hours.")
     handler = HANDLERS.get(action)
     if handler is not None:
-        return handler(db, tenant_id=tenant_id, actor_id=actor_id, row=row, payload_patch=payload_patch)
+        message = handler(db, tenant_id=tenant_id, actor_id=actor_id, row=row, payload_patch=payload_patch)
+        return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message=message)
     if action.endswith(".send"):
-        return _send(db, tenant_id=tenant_id, actor_id=actor_id, row=row, payload_patch=payload_patch)
-    return ""
+        message = _send(db, tenant_id=tenant_id, actor_id=actor_id, row=row, payload_patch=payload_patch)
+        return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message=message)
+    return _remember(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        row=row,
+        message=f"Action type {action} is not executable.",
+    )
+
+
+def _remember(db: Session, *, tenant_id: UUID, actor_id: UUID, row: AIApproval, message: str) -> str:
+    from app.services.action_requests import classify_execution, upsert_action_request
+
+    text = message or f"Action type {row.action_type} is not executable."
+    upsert_action_request(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        approval=row,
+        action_type=row.action_type,
+        status=classify_execution(text),
+        result=text,
+        entity_type=row.entity_type,
+        entity_id=row.entity_id,
+        dedupe_key=row.idempotency_key or f"approval:{row.id}",
+        payload=_payload(row),
+    )
+    return text
 
 
 def apply_approval_decision(

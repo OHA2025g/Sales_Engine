@@ -1,5 +1,6 @@
 "use client";
 
+import { Checks, Go, initials, Line, Notice, Panel } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
 import { DeniedState, ErrorState, LoadingState } from "@/components/states";
 import { AutomationTrace } from "@/components/automation-trace";
@@ -105,7 +106,55 @@ export default function LeadDetailPage() {
           </>
         }
       />
-      <div className="grid gap-4 xl:grid-cols-3">
+      <Notice
+        title="Next expected outcome: qualified discovery"
+        body="Confirm the buyer’s success criteria, technical stakeholder, and decision process before opportunity handoff."
+      />
+      <div className="ds-grid wide">
+        <Panel title="Lead context">
+          <div className="ds-flex">
+            <span className="avatar square">{initials(fullName(lead.first_name, lead.last_name))}</span>
+            <div>
+              <h2>{fullName(lead.first_name, lead.last_name)}</h2>
+              <div className="small muted">{lead.title || "Title not recorded"} · {lead.company_name || "No company"}</div>
+            </div>
+            <span className="ds-grow" />
+            <Badge tone={lead.status === "qualified" ? "ok" : "blue"}>{labelize(lead.status)}</Badge>
+          </div>
+          <hr className="rule" />
+          <Line label="Fit assessment" value={parts?.total != null ? `${parts.total} / 100 · evidence attached` : "Not scored"} />
+          <Line label="Source" value={lead.source || "Not recorded"} />
+          <Line label="Channel" value={lead.channel || "Not recorded"} />
+          <Line label="Contact eligibility" value={lead.opt_out ? "Opted out" : lead.consent_email ? "Email permitted · current" : "Consent not recorded"} />
+          <Line label="Buying trigger" value={lead.has_buying_trigger ? "Recorded" : "Not recorded"} />
+          <div className="ds-flex" style={{ marginTop: 18 }}>
+            {lead.account_id ? <Go href={`/accounts/${lead.account_id}`}>Account</Go> : null}
+            <Go href="/contacts">Contact</Go>
+            <Go href="/meetings">Meeting</Go>
+            <Go href="/automation/runs">Execution</Go>
+          </div>
+        </Panel>
+        <Panel title="Qualification evidence">
+          <Checks
+            items={[
+              { label: "Business need identified", ok: Boolean(lead.notes || lead.has_buying_trigger) },
+              { label: "Sponsor relationship confirmed", ok: lead.status === "qualified" || lead.status === "converted" },
+              { label: "Permitted contact scope present", ok: lead.consent_email && !lead.opt_out },
+              { label: "Technical evaluator mapped", ok: Boolean(lead.title) },
+              { label: "Success criteria and timing confirmed", ok: lead.status === "qualified" },
+            ]}
+          />
+          <hr className="rule" />
+          <span className="small muted">The meeting outcome controls the opportunity handoff.</span>
+          <div style={{ marginTop: 16 }}>
+            <Go href="/meetings" primary>Record meeting outcome</Go>
+          </div>
+          <Button variant="line" onClick={() => nba.mutate()}>Next best action</Button>
+          {nbaBody?.action ? <p>{nbaBody.action}</p> : null}
+          {nbaBody?.reason ? <p className="small muted">{nbaBody.reason}</p> : null}
+        </Panel>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-3 section-gap">
         <div className="panel p-5">
           <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">Score</p>
           <div className="mt-3 flex items-end gap-3">

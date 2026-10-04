@@ -69,7 +69,7 @@ def evaluate_readiness(db: Session, *, tenant_id: UUID) -> dict:
     head = _alembic_head()
     current = _db_revision(db)
     if not current and settings.database_url.startswith("sqlite"):
-        items.append(_item("migrations", "READY", "SQLite create_all path; Alembic head is 019", True))
+        items.append(_item("migrations", "READY", f"SQLite create_all path; Alembic head is {head}", True))
     elif current == head and head:
         items.append(_item("migrations", "READY", f"Database revision {current}", True))
     else:
@@ -86,21 +86,24 @@ def evaluate_readiness(db: Session, *, tenant_id: UUID) -> dict:
     )
     items.append(_item("emergency_stop", "READY", "Tenant and global emergency stop controls exist", True))
 
-    rls_ok = settings.database_url.startswith("postgresql") and bool(settings.database_admin_url)
+    from app.services.workflow_surface import latest_evidence
+
+    rls_configured = settings.database_url.startswith("postgresql") and bool(settings.database_admin_url)
+    rls_proven = latest_evidence(db, tenant_id, "rls_role_test") is not None
     items.append(
         _item(
             "rls",
-            "READY" if rls_ok else ("OPTIONAL" if not settings.is_production else "BLOCKER"),
-            "Postgres admin URL configured" if rls_ok else "RLS requires Postgres and DATABASE_ADMIN_URL",
+            "READY" if rls_proven else ("BLOCKER" if settings.is_production else "NOT_PROVEN"),
+            "Role-scoped RLS check recorded" if rls_proven else ("Postgres is configured but no role test is recorded" if rls_configured else "RLS requires Postgres and a recorded role test"),
             settings.is_production,
         )
     )
-    backup_ok = bool(settings.database_admin_url)
+    restore = latest_evidence(db, tenant_id, "restore")
     items.append(
         _item(
             "backup",
-            "READY" if backup_ok else ("OPTIONAL" if not settings.is_production else "BLOCKER"),
-            "DATABASE_ADMIN_URL can dump Postgres" if backup_ok else "Backup target is not configured",
+            "READY" if restore is not None else ("BLOCKER" if settings.is_production else "NOT_PROVEN"),
+            restore.detail if restore is not None else "A backup is not proven until a restore is recorded",
             settings.is_production,
         )
     )

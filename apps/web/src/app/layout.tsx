@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
+import { Inter } from "next/font/google";
 import { connection } from "next/server";
-import { getApiBase } from "@agrayian/sdk";
-import { Providers } from "@/components/providers";
+import { RevenueDesign } from "@/components/revenue-design";
 import "./globals.css";
+import "./design.css";
 
-const sans = Manrope({
+const sans = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
-  title: "AGRAYIAN · Revenue OS",
-  description: "Revenue operating system for AGRAYIAN AI Labs",
+  title: "Sales Engine",
+  description: "Revenue workspace for AGRAYIAN AI Labs",
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },
@@ -22,16 +22,11 @@ export const dynamic = "force-dynamic";
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await connection();
-  const apiUrl = getApiBase();
+  void children;
   return (
     <html lang="en">
-      <body className={`${sans.variable} font-sans antialiased text-ink bg-canvas`}>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `window.__AGRAYIAN_API_URL=${JSON.stringify(apiUrl)};`,
-          }}
-        />
-        <Providers>{children}</Providers>
+      <body className={`${sans.variable} font-sans antialiased`}>
+        <RevenueDesign />
       </body>
     </html>
   );

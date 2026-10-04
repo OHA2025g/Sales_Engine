@@ -137,13 +137,17 @@ def score_deal(db: Session, tenant_id: UUID, opportunity: Opportunity) -> DealIn
 
 
 def build_forecast(db: Session, tenant_id: UUID, actor_id: UUID) -> ForecastSnapshot:
-    open_rows = db.scalars(
+    from app.services.revenue_ledger import opportunities_for_period
+
+    open_rows_all = db.scalars(
         select(Opportunity).where(
             Opportunity.tenant_id == tenant_id,
             Opportunity.deleted_at.is_(None),
             Opportunity.stage.notin_(["closed_won", "closed_lost"]),
         )
     ).all()
+    period = date.today().strftime("%Y-%m")
+    open_rows, unscheduled = opportunities_for_period(list(open_rows_all), period)
     won = db.scalar(
         select(func.count()).where(Opportunity.tenant_id == tenant_id, Opportunity.stage == "closed_won", Opportunity.deleted_at.is_(None))
     ) or 0
@@ -157,7 +161,7 @@ def build_forecast(db: Session, tenant_id: UUID, actor_id: UUID) -> ForecastSnap
     snapshot = ForecastSnapshot(
         tenant_id=tenant_id,
         created_by=actor_id,
-        period=date.today().strftime("%Y-%m"),
+        period=period,
         committed=committed,
         best_case=pipeline,
         pipeline=pipeline,
@@ -167,8 +171,17 @@ def build_forecast(db: Session, tenant_id: UUID, actor_id: UUID) -> ForecastSnap
         payload_json=json.dumps(
             {
                 "open_count": len(open_rows),
-                "stages": {row.stage: str(row.amount) for row in open_rows},
-                "owners": [str(row.owner_id) for row in open_rows if row.owner_id],
+                "stages": {
+                    stage: str(sum((row.amount or Decimal("0") for row in open_rows if row.stage == stage), Decimal("0")))
+                    for stage in {row.stage for row in open_rows}
+                },
+                "owners": {
+                    str(owner): str(sum((row.amount or Decimal("0") for row in open_rows if row.owner_id == owner), Decimal("0")))
+                    for owner in {row.owner_id for row in open_rows if row.owner_id}
+                },
+                "opportunities": [str(row.id) for row in open_rows],
+                "unscheduled_count": len(unscheduled),
+                "unscheduled_amount": str(sum((row.amount or Decimal("0") for row in unscheduled), Decimal("0"))),
             },
             default=str,
         ),
@@ -202,6 +215,7 @@ def enroll_sequence(
     lead: Lead,
     run_id: UUID | None = None,
     actor_type: str = "human",
+    authorization: str = "approval",
 ) -> SequenceEnrollment:
     if lead.opt_out:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Lead has opted out")
@@ -243,8 +257,7 @@ def enroll_sequence(
             )
         )
         if already is None:
-            db.add(
-                AIApproval(
+            approval = AIApproval(
                     tenant_id=tenant_id,
                     created_by=actor_id,
                     action_level=2,
@@ -265,13 +278,19 @@ def enroll_sequence(
                             "expected_outcome": "First-touch email recorded after approval.",
                         }
                     ),
-                    status="pending",
+                    status="approved" if authorization == "execute" else "pending",
                     run_id=run_id,
                     entity_type="lead",
                     entity_id=str(lead.id),
                     idempotency_key=key,
                 )
-            )
+            db.add(approval)
+            if authorization == "execute":
+                db.flush()
+                # Dispatcher imports lifecycle helpers; keep this call local to avoid a cycle.
+                from app.services.dispatcher import dispatch_approval
+
+                dispatch_approval(db, tenant_id=tenant_id, actor_id=actor_id, row=approval)
     elif first and first.action_type == "task":
         db.add(
             Task(
@@ -294,15 +313,54 @@ def enroll_sequence(
         entity_id=str(lead.id),
         activity_type="sequence",
         title=f"Enrolled in {sequence.name}",
-        body="Send stays in Approvals until a human approves.",
+        body="Bounded grant queued delivery." if authorization == "execute" else "Send stays in Approvals until a human approves.",
         actor_type=actor_type,
     )
     return enrollment
 
 
 def run_playbook(db: Session, *, tenant_id: UUID, actor_id: UUID, playbook: Playbook, entity_type: str, entity_id: str) -> WorkflowRun:
+    if playbook.status not in {"active", ""} or not playbook.is_active:
+        run = WorkflowRun(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            trigger_event=playbook.trigger_event,
+            status="blocked",
+            log_json=json.dumps([{"error": "Playbook is not activated"}]),
+            finished_at=datetime.now(UTC),
+        )
+        db.add(run)
+        return run
+    try:
+        conditions = json.loads(playbook.conditions_json or "{}")
+    except json.JSONDecodeError:
+        conditions = {}
+    if conditions:
+        run = WorkflowRun(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            trigger_event=playbook.trigger_event,
+            status="skipped",
+            log_json=json.dumps([{"error": "Conditions are stored for the event matcher and were not met by a direct run"}]),
+            finished_at=datetime.now(UTC),
+        )
+        db.add(run)
+        return run
     actions = json.loads(playbook.actions_json or "[]")
+    supported = {"create_task", "write_activity", "request_approval"}
+    if any(action.get("type") not in supported for action in actions):
+        run = WorkflowRun(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            trigger_event=playbook.trigger_event,
+            status="failed",
+            log_json=json.dumps([{"error": "Unsupported action blocks activation"}]),
+            finished_at=datetime.now(UTC),
+        )
+        db.add(run)
+        return run
     log = []
+    failed = False
     for action in actions:
         kind = action.get("type")
         if kind == "create_task":
@@ -348,11 +406,12 @@ def run_playbook(db: Session, *, tenant_id: UUID, actor_id: UUID, playbook: Play
             log.append({"type": kind, "ok": True})
         else:
             log.append({"type": kind, "ok": False, "error": "unsupported"})
+            failed = True
     run = WorkflowRun(
         tenant_id=tenant_id,
         created_by=actor_id,
         trigger_event=playbook.trigger_event,
-        status="completed",
+        status="failed" if failed else "completed",
         log_json=json.dumps(log),
         finished_at=datetime.now(UTC),
     )
@@ -405,7 +464,14 @@ def create_quote(
                 action_level=2,
                 action_type="quote.discount",
                 title=f"Approve {quote.discount_pct}% discount on quote",
-                payload_json=json.dumps({"quote_id": str(quote.id), "total": str(quote.total)}),
+                payload_json=json.dumps(
+                    {
+                        "quote_id": str(quote.id),
+                        "total": str(quote.total),
+                        "version": int(quote.version or 1),
+                        "discount_pct": quote.discount_pct,
+                    }
+                ),
                 status="pending",
             )
         )
@@ -512,12 +578,16 @@ def renewal_metrics(db: Session, tenant_id: UUID) -> dict:
     customers = db.scalars(select(Customer).where(Customer.tenant_id == tenant_id, Customer.deleted_at.is_(None))).all()
     arr = sum((row.arr or Decimal("0")) for row in customers)
     due_90 = sum(1 for row in rows if row.renewal_date and date.today() <= row.renewal_date <= date.today() + timedelta(days=90))
+    from app.services.revenue_ledger import retention_metrics
+
+    retention = retention_metrics(db, tenant_id)
     return {
         "renewals": len(rows),
         "customers": len(customers),
         "arr": str(arr),
         "due_90": due_90,
-        "grr": 1.0 if customers else 0.0,
-        "nrr": 1.0 if customers else 0.0,
-        "note": "GRR/NRR stay 1.0 until amendments exist. No invented contraction.",
+        "grr": retention["grr"],
+        "nrr": retention["nrr"],
+        "retention_status": retention["status"],
+        "note": retention.get("reason") or "Measured from the opening cohort and recorded movements.",
     }

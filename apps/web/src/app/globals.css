@@ -3,26 +3,31 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
-  --bg: #e8eef8;
-  --bg-2: rgba(255, 255, 255, 0.72);
-  --card: rgba(255, 255, 255, 0.55);
-  --line: rgba(148, 163, 184, 0.35);
-  --line-strong: rgba(37, 99, 235, 0.28);
-  --text: #0f172a;
-  --muted: #64748b;
-  --brand: #0f766e;
-  --brand-hover: #0d9488;
-  --brand-soft: #f0fdfa;
-  --navy: #1e3a5f;
-  --blue: #2563eb;
-  --blue-soft: #dbeafe;
-  --gold: #0f766e;
-  --gold-2: #14b8a6;
-  --mint: #0f766e;
-  --rose: #be123c;
-  --ok: #15803d;
-  --warn: #b45309;
+  color-scheme: dark;
+  --bg: #0d1118;
+  --bg-2: #10151e;
+  --card: #151c27;
+  --line: #293346;
+  --line-strong: #3a4860;
+  --text: #eef2fa;
+  --muted: #a0aec3;
+  --meta: #7e8da4;
+  --brand: #99a5ff;
+  --brand-hover: #c5ccff;
+  --brand-soft: #1b2432;
+  --navy: #eef2fa;
+  --blue: #99a5ff;
+  --blue-soft: #20354d;
+  --gold: #f3cb85;
+  --gold-2: #3d3223;
+  --mint: #8dd6b7;
+  --rose: #ffabae;
+  --ok: #8dd6b7;
+  --warn: #f3cb85;
+  --success-bg: #18382f;
+  --review-bg: #3d3223;
+  --blocked-bg: #43272e;
+  --info-bg: #20354d;
 }
 
 html,
@@ -33,23 +38,16 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
+  font-feature-settings: "tnum" 1;
 }
 
-body::before {
-  content: "";
-  pointer-events: none;
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background:
-    radial-gradient(880px 520px at 8% -8%, rgba(37, 99, 235, 0.34), transparent 58%),
-    radial-gradient(760px 480px at 96% 8%, rgba(15, 118, 110, 0.22), transparent 52%),
-    radial-gradient(640px 420px at 70% 110%, rgba(29, 78, 216, 0.16), transparent 55%);
-}
-
-body > * {
-  position: relative;
-  z-index: 1;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 *::-webkit-scrollbar {
@@ -58,49 +56,32 @@ body > * {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: rgba(37, 99, 235, 0.22);
+  background: #293346;
   border-radius: 999px;
 }
 
 .panel {
-  @apply rounded-2xl border backdrop-blur-xl;
+  @apply rounded-lg border;
   background: var(--card);
-  border-color: rgba(255, 255, 255, 0.72);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.7) inset,
-    0 18px 40px rgba(30, 58, 95, 0.08);
+  border-color: var(--line);
 }
 
 .glass-strong {
-  @apply border backdrop-blur-2xl;
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(255, 255, 255, 0.8);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 16px 40px rgba(30, 58, 95, 0.1);
+  @apply border;
+  background: #10151e;
+  border-color: var(--line);
 }
 
 .kpi-sheen {
   position: relative;
-  overflow: hidden;
-}
-
-.kpi-sheen::after {
-  content: "";
-  pointer-events: none;
-  position: absolute;
-  inset: 0 auto auto 0;
-  height: 3px;
-  width: 100%;
-  background: linear-gradient(90deg, #2563eb, #0f766e);
 }
 
 .hairline {
-  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.35), transparent);
+  background: var(--line);
   height: 1px;
 }
 
 ::selection {
-  background: rgba(37, 99, 235, 0.2);
+  background: rgba(153, 165, 255, 0.28);
   color: var(--text);
 }

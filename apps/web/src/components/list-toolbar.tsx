@@ -23,7 +23,7 @@ export function ListToolbar({
   extra?: ReactNode;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-3">
+    <div className="toolbar">
       <Input
         value={query}
         onChange={(e) => onQuery(e.target.value)}
@@ -39,10 +39,9 @@ export function ListToolbar({
           ))}
         </Select>
       ) : null}
-      <div className="ml-auto flex gap-2">
-        {extra}
-        {onCreate ? <Button onClick={onCreate}>{createLabel ?? "Create"}</Button> : null}
-      </div>
+      <span className="ds-grow" />
+      {extra}
+      {onCreate ? <Button onClick={onCreate}>{createLabel ?? "Create"}</Button> : null}
     </div>
   );
 }

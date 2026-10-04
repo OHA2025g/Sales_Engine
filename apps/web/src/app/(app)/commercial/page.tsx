@@ -1,14 +1,16 @@
 "use client";
 
 import { DataTable } from "@/components/data-table";
+import { Go, Panel, Stats } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
-import { DeniedState, EmptyState, ErrorState, LoadingState } from "@/components/states";
+import { DeniedState, ErrorState, LoadingState } from "@/components/states";
 import { Badge, Button, Drawer, Field, FormActions, Input, Select } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { money } from "@/lib/format";
 import type { Opportunity, Product, Quote } from "@/lib/types";
 import { api } from "@agrayian/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -33,6 +35,10 @@ export default function CommercialPage() {
     queryKey: ["opportunities"],
     queryFn: async () => (await api<Opportunity[]>("/api/v1/opportunities")).data ?? [],
     enabled: can("opportunities.read") && open,
+  });
+  const accept = useMutation({
+    mutationFn: (quoteId: string) => api(`/api/v1/workflow/quotes/${quoteId}/accept`, { method: "POST", body: JSON.stringify({ note: "" }) }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["quotes"] }),
   });
   const create = useMutation({
     mutationFn: (body: QuoteForm) =>
@@ -59,39 +65,67 @@ export default function CommercialPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Phase 14"
-        title="Commercial"
-        subtitle="Line totals are quantity × list price. Discount ≥ 10% queues Approvals. The model does not invent ARR."
+        eyebrow="Commercial"
+        title="Quotes"
+        subtitle="Discount of 10% or more needs approval of that quote version. Editing the quote after approval makes the old authorization stale. Accepted business is not forecast."
         actions={can("commercial.write") ? <Button onClick={() => setOpen(true)}>New quote</Button> : null}
       />
-      <h2 className="mb-3 text-xl font-semibold text-navy">Catalog</h2>
-      {(products.data ?? []).length === 0 ? (
-        <EmptyState title="No products" body="Add SKUs before quoting." />
-      ) : (
-        <DataTable
-          rows={products.data ?? []}
-          columns={[
-            { key: "sku", header: "SKU", cell: (row) => row.sku },
-            { key: "name", header: "Product", cell: (row) => row.name },
-            { key: "price", header: "List", cell: (row) => money(row.list_price) },
-          ]}
-        />
-      )}
-      <h2 className="mb-3 mt-8 text-xl font-semibold text-navy">Quotes</h2>
-      {(quotes.data ?? []).length === 0 ? (
-        <EmptyState title="No quotes" body="A quote is math, not a story." />
-      ) : (
-        <DataTable
-          rows={quotes.data ?? []}
-          columns={[
-            { key: "id", header: "Quote", cell: (row) => row.id.slice(0, 8) },
-            { key: "sub", header: "Subtotal", cell: (row) => money(row.subtotal) },
-            { key: "disc", header: "Discount", cell: (row) => `${row.discount_pct}%` },
-            { key: "total", header: "Total", cell: (row) => money(row.total) },
-            { key: "appr", header: "Approval", cell: (row) => <Badge tone={row.approval_required ? "gold" : "ok"}>{row.approval_required ? "queued" : "none"}</Badge> },
-          ]}
-        />
-      )}
+      <Stats
+        items={[
+          { name: "Quotes under review", value: String((quotes.data ?? []).filter((row) => row.approval_required).length), note: "Version-bound decisions" },
+          { name: "Authorized quotes", value: String((quotes.data ?? []).filter((row) => row.status === "approved").length), note: "Ready for permitted delivery" },
+          { name: "Acceptance pending", value: String((quotes.data ?? []).filter((row) => row.status === "sent" || row.status === "approved").length), note: "Buyer action needed" },
+          { name: "Active products", value: String((products.data ?? []).length), note: "Approved catalog" },
+        ]}
+      />
+      <div className="ds-grid wide">
+        <Panel title="Quotes" extra={<Go href="/commercial/proposal">Proposal workspace</Go>} body={false}>
+          {(quotes.data ?? []).length === 0 ? (
+            <div className="empty"><h3>No quotes</h3><p>A quote is a versioned commercial record, not a forecast.</p></div>
+          ) : (
+            <DataTable
+              bare
+              rows={quotes.data ?? []}
+              columns={[
+                {
+                  key: "id",
+                  header: "Quote / customer",
+                  cell: (row) => (
+                    <Link className="record-link" href={`/commercial/quotes/${row.id}`}>
+                      <span>{row.id.slice(0, 8)}</span>
+                    </Link>
+                  ),
+                },
+                { key: "total", header: "Value", cell: (row) => <span className="num">{money(row.total)}</span> },
+                { key: "status", header: "Authorization", cell: (row) => <Badge tone={row.status === "accepted" || row.status === "approved" ? "ok" : "gold"}>{row.status}</Badge> },
+                {
+                  key: "next",
+                  header: "Next step",
+                  cell: (row) =>
+                    can("commercial.write") && row.status === "approved" ? (
+                      <Button variant="line" onClick={() => accept.mutate(row.id)}>Accept</Button>
+                    ) : row.status === "accepted" ? "Recorded" : row.approval_required ? "Authorize discount" : "Review version",
+                },
+              ]}
+            />
+          )}
+        </Panel>
+        <Panel title="Approved catalog" body={false}>
+          {(products.data ?? []).length === 0 ? (
+            <div className="empty"><h3>No products</h3><p>Add SKUs before quoting.</p></div>
+          ) : (
+            (products.data ?? []).map((row) => (
+              <div className="row" key={row.id}>
+                <div className="main">
+                  <h3>{row.name}</h3>
+                  <p>{row.sku}</p>
+                </div>
+                <span className="num">{money(row.list_price)}</span>
+              </div>
+            ))
+          )}
+        </Panel>
+      </div>
       <Drawer open={open} title="New quote" onClose={() => setOpen(false)}>
         <form onSubmit={form.handleSubmit((values) => create.mutate(values))} className="space-y-4">
           <Field label="Opportunity">

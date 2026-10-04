@@ -1,0 +1,28 @@
+{
+  "theme": "dark",
+  "cssVariables": {
+    "--bg": "#0d1118",
+    "--sidebar": "#10151e",
+    "--surface": "#151c27",
+    "--raised": "#1b2432",
+    "--input": "#101722",
+    "--line": "#293346",
+    "--ink": "#eef2fa",
+    "--dim": "#a0aec3",
+    "--faint": "#7e8da4",
+    "--brand": "#99a5ff",
+    "--brand-bg": "#283151",
+    "--green": "#8dd6b7",
+    "--green-bg": "#18382f",
+    "--amber": "#f3cb85",
+    "--amber-bg": "#3d3223",
+    "--red": "#ffabae",
+    "--red-bg": "#43272e",
+    "--blue": "#9dcaff",
+    "--blue-bg": "#20354d",
+    "--radius": "8px"
+  },
+  "fontStack": "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+  "bodySize": "16px",
+  "defaultControlSize": "14px"
+}

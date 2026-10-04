@@ -25,9 +25,11 @@ export default function CustomersPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Close"
-        title="Customers"
-        subtitle="Closed Won activates the customer, handoff, onboarding, health, and a renewal record."
+        eyebrow="Customers"
+        title="Portfolio"
+        subtitle="Closed Won activates the customer. Missing health stays unavailable."
+        nextHref="/onboarding"
+        nextLabel="Onboarding"
       />
       {rows.length === 0 ? (
         <EmptyState title="No customers yet" body="Close an opportunity as won to mint a customer and a renewal record." />

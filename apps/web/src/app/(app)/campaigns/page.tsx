@@ -9,6 +9,7 @@ import { labelize, money } from "@/lib/format";
 import type { Campaign } from "@/lib/types";
 import { api } from "@agrayian/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -76,7 +77,7 @@ export default function CampaignsPage() {
         <DataTable
           rows={rows}
           columns={[
-            { key: "name", header: "Campaign", cell: (row) => row.name },
+            { key: "name", header: "Campaign", cell: (row) => <Link href={`/campaigns/${row.id}`}>{row.name}</Link> },
             { key: "channel", header: "Channel", cell: (row) => labelize(row.channel) },
             { key: "status", header: "Status", cell: (row) => <Badge tone="gold">{labelize(row.status)}</Badge> },
             { key: "budget", header: "Budget", cell: (row) => money(row.budget) },

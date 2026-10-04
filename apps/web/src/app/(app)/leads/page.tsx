@@ -90,9 +90,8 @@ export default function LeadsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Step 2 · Start here"
         title="Leads"
-        subtitle="Autopilot discovers when enabled and a live provider returns people. Run discovery now is only for acceleration. New lead is for someone you found yourself."
+        subtitle="Qualify, route, and progress every eligible lead."
       />
       <ListToolbar
         query={q}

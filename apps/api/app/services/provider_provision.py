@@ -9,15 +9,56 @@ from app.services.provider_accounts import upsert_token_account
 from app.services.provider_resolve import resolve_channel
 
 
+def _present(values: dict[str, str]) -> dict[str, str]:
+    return {key: value for key, value in values.items() if value}
+
+
+def _distinct_secret(candidate: str, primary: str) -> str:
+    if candidate and candidate != primary:
+        return candidate
+    return ""
+
+
 def provision_env_credentials(db: Session, *, tenant_id: UUID, actor_id: UUID) -> list[str]:
     """Copy deployment secrets into tenant ProviderAccount rows so resolve_channel reports tenant credential."""
     settings = get_settings()
     provisioned: list[str] = []
     specs: list[tuple[str, str, dict]] = []
-    if settings.linkedin_ads_configured:
-        specs.append(("linkedin", settings.linkedin_access_token, {"account_id": settings.linkedin_ad_account_id}))
-    if settings.meta_ads_configured:
-        specs.append(("meta", settings.meta_ads_token, {"account_id": settings.resolved_meta_ad_account_id}))
+    linkedin_token = settings.linkedin_access_token or settings.linkedin_post_access_token
+    if linkedin_token and (settings.linkedin_ads_configured or settings.linkedin_posting_configured):
+        specs.append(
+            (
+                "linkedin",
+                linkedin_token,
+                _present(
+                    {
+                        "account_id": settings.linkedin_ad_account_id,
+                        "organization_id": settings.linkedin_organization_id,
+                        "ads_mode": settings.linkedin_ads_mode,
+                        "posting_mode": settings.linkedin_posting_mode,
+                        "post_access_token": _distinct_secret(settings.linkedin_post_access_token, linkedin_token),
+                    }
+                ),
+            )
+        )
+    meta_token = settings.meta_ads_token or settings.meta_page_access_token
+    if meta_token and (settings.meta_ads_configured or settings.meta_page_posting_configured):
+        specs.append(
+            (
+                "meta",
+                meta_token,
+                _present(
+                    {
+                        "account_id": settings.resolved_meta_ad_account_id,
+                        "ads_mode": settings.meta_ads_mode,
+                        "page_id": settings.meta_page_id,
+                        "instagram_business_account_id": settings.instagram_business_account_id,
+                        "posting_mode": settings.meta_posting_mode,
+                        "page_access_token": _distinct_secret(settings.meta_page_access_token, meta_token),
+                    }
+                ),
+            )
+        )
     if settings.twilio_configured:
         specs.append(
             (

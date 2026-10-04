@@ -6,9 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.runtime import research_account
-from app.models.ai import AIApproval, AIRecommendation
+from app.models.ai import AIRecommendation
 from app.models.autonomy import AutomationIdempotencyKey, AutonomousRun, AutonomousRunStep, AutopilotSettings
-from app.models.crm import Lead, Task
+from app.models.crm import Lead
 from app.models.identity import DomainEvent, User
 from app.models.lifecycle import Sequence, SequenceEnrollment, SequenceStep
 from app.services.audit import emit_event
@@ -37,8 +37,6 @@ LEAD_STATES = [
     "OUTREACH_APPROVAL_PENDING",
     "CONTACTED",
     "MEETING_SCHEDULED",
-    "BLOCKED",
-    "PAUSED",
 ]
 
 
@@ -143,17 +141,10 @@ def _load_lead(db: Session, tenant_id: UUID, entity_id: str) -> Lead | None:
     )
 
 
-def select_sequence(db: Session, tenant_id: UUID) -> Sequence | None:
-    return db.scalar(
-        select(Sequence)
-        .where(
-            Sequence.tenant_id == tenant_id,
-            Sequence.deleted_at.is_(None),
-            Sequence.channel == "email",
-            Sequence.status.in_(["live", "active", "draft"]),
-        )
-        .order_by(Sequence.created_at.asc())
-    )
+def select_sequence(db: Session, tenant_id: UUID, lead: Lead | None = None) -> Sequence | None:
+    from app.services.journey_engine import select_activated_sequence
+
+    return select_activated_sequence(db, tenant_id, lead)
 
 
 def prepare_outreach(
@@ -167,6 +158,8 @@ def prepare_outreach(
     correlation_id: str,
     position: int,
 ) -> dict:
+    from app.services.journey_engine import block_evaluation, evaluation_key, mark_execution
+
     if in_quiet_hours(settings):
         upsert_state(
             db,
@@ -205,6 +198,15 @@ def prepare_outreach(
             blocked_reason="Lead has opted out",
             run_id=run.id,
         )
+        mark_execution(
+            db,
+            tenant_id=tenant_id,
+            entity_id=str(lead.id),
+            execution_status="blocked",
+            business_state="disqualified",
+            resume_step="outreach",
+            evaluation=block_evaluation(db, tenant_id=tenant_id, lead=lead, blocked_reason="Lead has opted out"),
+        )
         return {"status": "BLOCKED", "reason": "opt_out"}
     if not lead.consent_email:
         upsert_state(
@@ -231,6 +233,15 @@ def prepare_outreach(
             entity_type="lead",
             entity_id=str(lead.id),
         )
+        mark_execution(
+            db,
+            tenant_id=tenant_id,
+            entity_id=str(lead.id),
+            execution_status="blocked",
+            business_state="assessed",
+            resume_step="outreach",
+            evaluation=block_evaluation(db, tenant_id=tenant_id, lead=lead, blocked_reason="Lead has no consent"),
+        )
         return {"status": "BLOCKED", "reason": "Lead has no consent"}
     latest = latest_score(db, lead)
     total = latest.total if latest else 0
@@ -245,6 +256,15 @@ def prepare_outreach(
             last_action="outreach_blocked",
             blocked_reason="below minimum score",
             run_id=run.id,
+        )
+        mark_execution(
+            db,
+            tenant_id=tenant_id,
+            entity_id=str(lead.id),
+            execution_status="blocked",
+            business_state="assessed",
+            resume_step="outreach",
+            evaluation=block_evaluation(db, tenant_id=tenant_id, lead=lead, blocked_reason="below minimum score"),
         )
         return {"status": "BLOCKED", "reason": "below minimum score", "total": total}
     if not settings.sequence_enrollment_enabled or not settings.outreach_preparation_enabled:
@@ -261,7 +281,34 @@ def prepare_outreach(
             run_id=run.id,
         )
         return {"status": "SKIPPED", "reason": "module_disabled"}
-    sequence = select_sequence(db, tenant_id)
+    from app.services.grants import send_authorization
+    from app.services.journey_engine import open_configuration_exception
+
+    decision = send_authorization(db, tenant_id=tenant_id, settings=settings, action_type="sequence.email.send")
+    if decision == "blocked":
+        upsert_state(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            entity_type="lead",
+            entity_id=str(lead.id),
+            state="BLOCKED",
+            last_action="grant_required",
+            next_action="configure_grant",
+            blocked_reason="scoped_grant_required",
+            run_id=run.id,
+        )
+        mark_execution(
+            db,
+            tenant_id=tenant_id,
+            entity_id=str(lead.id),
+            execution_status="blocked",
+            business_state="qualified",
+            resume_step="outreach",
+            evaluation=block_evaluation(db, tenant_id=tenant_id, lead=lead, blocked_reason="scoped_grant_required"),
+        )
+        return {"status": "BLOCKED", "reason": "scoped_grant_required"}
+    sequence = select_sequence(db, tenant_id, lead)
     if sequence is None:
         upsert_state(
             db,
@@ -275,20 +322,14 @@ def prepare_outreach(
             blocked_reason="no_sequence",
             run_id=run.id,
         )
-        if settings.auto_create_internal_tasks:
-            db.add(
-                Task(
-                    tenant_id=tenant_id,
-                    created_by=actor_id,
-                    title="Configure an email sequence",
-                    description=f"Qualified lead {lead.email or lead.id} has no eligible sequence.",
-                    status="open",
-                    priority="medium",
-                    entity_type="lead",
-                    entity_id=str(lead.id),
-                    source="workflow",
-                )
-            )
+        open_configuration_exception(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            lead=lead,
+            reason="no_activated_sequence",
+            run_id=run.id,
+        )
         return {"status": "BLOCKED", "reason": "no_sequence"}
     enrollment = enroll_sequence(
         db,
@@ -298,16 +339,18 @@ def prepare_outreach(
         lead=lead,
         run_id=run.id,
         actor_type="ai",
+        authorization=decision,
     )
+    waiting = decision != "execute"
     upsert_state(
         db,
         tenant_id=tenant_id,
         actor_id=actor_id,
         entity_type="lead",
         entity_id=str(lead.id),
-        state="OUTREACH_APPROVAL_PENDING",
+        state="OUTREACH_APPROVAL_PENDING" if waiting else "READY_FOR_OUTREACH",
         last_action="enroll_sequence",
-        next_action="approve_send",
+        next_action="approve_send" if waiting else "deliver",
         blocked_reason="",
         run_id=run.id,
     )
@@ -327,13 +370,25 @@ def prepare_outreach(
         run=run,
         name="prepare_outreach",
         position=position,
-        status="WAITING_FOR_APPROVAL",
-        detail={"sequence_id": str(sequence.id), "enrollment_id": str(enrollment.id)},
+        status="WAITING_FOR_APPROVAL" if waiting else "QUEUED",
+        detail={"sequence_id": str(sequence.id), "enrollment_id": str(enrollment.id), "authorization": decision},
         entity_type="lead",
         entity_id=str(lead.id),
         idempotency_key=f"enroll:{lead.id}:{sequence.id}",
     )
-    return {"status": "WAITING_FOR_APPROVAL", "sequence_id": str(sequence.id), "enrollment_id": str(enrollment.id)}
+    mark_execution(
+        db,
+        tenant_id=tenant_id,
+        entity_id=str(lead.id),
+        execution_status="waiting" if waiting else "queued",
+        business_state="engaging",
+        evaluation=evaluation_key(lead),
+    )
+    return {
+        "status": "WAITING_FOR_APPROVAL" if waiting else "QUEUED",
+        "sequence_id": str(sequence.id),
+        "enrollment_id": str(enrollment.id),
+    }
 
 
 def run_lead_intake(
@@ -361,8 +416,19 @@ def run_lead_intake(
     )
     run = _intake_run(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, correlation_id=correlation_id)
     if not claimed and key_row.result_ref:
+        from app.services.journey_engine import block_evaluation
+
         existing_state = get_state(db, tenant_id=tenant_id, entity_type="lead", entity_id=str(lead.id))
-        if existing_state and _rank(existing_state.state) >= _rank("READY_FOR_OUTREACH"):
+        if existing_state and existing_state.state in {"BLOCKED", "PAUSED"}:
+            current = block_evaluation(
+                db,
+                tenant_id=tenant_id,
+                lead=lead,
+                blocked_reason=existing_state.blocked_reason or "",
+            )
+            if existing_state.evaluation_key and existing_state.evaluation_key == current:
+                return {"status": "SKIPPED", "reason": "still_blocked", "run_id": str(run.id)}
+        elif existing_state and _rank(existing_state.state) >= _rank("READY_FOR_OUTREACH"):
             return {"status": "SKIPPED", "reason": "already_processed", "run_id": str(run.id)}
     upsert_state(
         db,
@@ -733,20 +799,19 @@ def process_pending_events(
             db,
             lambda tid: process_pending_events(db, tenant_id=tid, actor_id=actor_id, limit=limit),
         )
+    from app.services.event_delivery import acknowledge, claim_next_event, fail_delivery
+
     db.flush()
     processed = 0
     while processed < limit:
-        stmt = select(DomainEvent).where(DomainEvent.processed_at.is_(None)).order_by(DomainEvent.created_at.asc())
-        if tenant_id is not None:
-            stmt = stmt.where(DomainEvent.tenant_id == tenant_id)
-        event = db.execute(stmt.limit(1)).scalars().first()
+        event = claim_next_event(db, tenant_id=tenant_id)
         if event is None:
             break
         try:
             handle_event(db, event, actor_id=actor_id)
-            event.processed_at = datetime.now(UTC)
+            acknowledge(db, event, actor_id=actor_id)
         except Exception as exc:  # noqa: BLE001 — isolated per event
-            event.processed_at = datetime.now(UTC)
+            fail_delivery(db, event, str(exc), actor_id=actor_id)
             add_activity(
                 db,
                 tenant_id=event.tenant_id,
@@ -803,42 +868,17 @@ def due_sequence_work(db: Session, *, tenant_id: UUID, actor_id: UUID) -> dict:
                 SequenceStep.position == enrollment.current_step,
             )
         )
-        if step is None or step.action_type != "email_draft":
-            continue
-        key = f"sequence.email.send:{enrollment.lead_id}:{enrollment.id}:{enrollment.current_step}"
-        exists = db.scalar(
-            select(AIApproval).where(
-                AIApproval.tenant_id == tenant_id,
-                AIApproval.idempotency_key == key,
-                AIApproval.deleted_at.is_(None),
-            )
-        )
-        if exists is not None:
+        if step is None:
+            enrollment.status = "blocked"
             continue
         lead = _load_lead(db, tenant_id, str(enrollment.lead_id))
-        if lead is None or lead.opt_out or not lead.consent_email:
+        if lead is None or lead.opt_out or (step.action_type in {"email_draft", "email_send", "send"} and not lead.consent_email):
             continue
-        db.add(
-            AIApproval(
-                tenant_id=tenant_id,
-                created_by=actor_id,
-                action_level=2,
-                action_type="sequence.email.send",
-                title=f"Send sequence step for {lead.email}",
-                payload_json=json.dumps(
-                    {
-                        "enrollment_id": str(enrollment.id),
-                        "lead_id": str(lead.id),
-                        "template": step.template,
-                    }
-                ),
-                status="pending",
-                entity_type="lead",
-                entity_id=str(lead.id),
-                idempotency_key=key,
-            )
-        )
-        queued += 1
+        from app.services.journey_engine import execute_due_step
+
+        outcome = execute_due_step(db, tenant_id=tenant_id, actor_id=actor_id, enrollment=enrollment, step=step, lead=lead)
+        if outcome == "email_queued":
+            queued += 1
     return {"due": len(enrollments), "queued": queued}
 
 

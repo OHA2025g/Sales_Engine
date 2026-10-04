@@ -583,7 +583,9 @@ def _automation_state(db: Session, tenant_id, actor_id, entity_type: str, entity
 
 
 def _event(db: Session, tenant_id, event_type: str, entity_type: str, entity_id: str, when: datetime) -> None:
-    key = f"demo-board:{event_type}:{entity_id}"
+    from app.services.correlation import bound_correlation_id
+
+    key = bound_correlation_id(f"demo-board:{event_type}:{entity_id}")
     row = db.scalar(select(DomainEvent).where(DomainEvent.tenant_id == tenant_id, DomainEvent.correlation_id == key))
     if row is None:
         row = DomainEvent(
