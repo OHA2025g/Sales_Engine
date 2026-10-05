@@ -30,6 +30,60 @@ def _as_uuid(value) -> UUID | None:
         return None
 
 
+def interest_is_eligible(payload: dict) -> bool:
+    email = _normalize_email(str(payload.get("email") or ""))
+    return bool(
+        str(payload.get("first_name") or "").strip()
+        and str(payload.get("last_name") or "").strip()
+        and "@" in email
+        and str(payload.get("request_note") or "").strip()
+        and bool(payload.get("consent_email"))
+    )
+
+
+def hold_interest(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    payload: dict,
+) -> InboundCapture:
+    email = _normalize_email(str(payload.get("email") or ""))
+    if "@" not in email:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Valid email required")
+    capture = InboundCapture(
+        tenant_id=tenant_id,
+        created_by=actor_id,
+        lead_id=None,
+        first_name=str(payload.get("first_name") or "").strip(),
+        last_name=str(payload.get("last_name") or "").strip(),
+        email=email,
+        company_name=str(payload.get("company_name") or ""),
+        title=str(payload.get("title") or ""),
+        source=str(payload.get("source") or "public_form"),
+        channel=str(payload.get("channel") or "website"),
+        campaign=str(payload.get("campaign") or ""),
+        ad_name=str(payload.get("ad_name") or ""),
+        creative=str(payload.get("creative") or ""),
+        keyword=str(payload.get("keyword") or ""),
+        landing_page=str(payload.get("landing_page") or ""),
+        utm_source=str(payload.get("utm_source") or ""),
+        utm_medium=str(payload.get("utm_medium") or ""),
+        utm_campaign=str(payload.get("utm_campaign") or ""),
+        device=str(payload.get("device") or ""),
+        consent_email=bool(payload.get("consent_email")),
+        phone=str(payload.get("phone") or "")[:40],
+        request_note=str(payload.get("request_note") or "").strip(),
+        status="review",
+        captured_at=datetime.now(UTC),
+        campaign_id=_as_uuid(payload.get("campaign_id")),
+        ad_id=str(payload.get("ad_id") or payload.get("ad_name") or ""),
+    )
+    db.add(capture)
+    db.flush()
+    return capture
+
+
 def capture_inbound(
     db: Session,
     *,
@@ -87,6 +141,7 @@ def capture_inbound(
             status="new",
             consent_email=bool(payload.get("consent_email")),
             opt_out=False,
+            notes=str(payload.get("request_note") or "").strip()[:4000],
         )
         db.add(lead)
         db.flush()
@@ -101,6 +156,10 @@ def capture_inbound(
         )
         created_lead = True
     else:
+        note = str(payload.get("request_note") or "").strip()
+        if note and note not in (lead.notes or ""):
+            current = (lead.notes or "").strip()
+            lead.notes = f"{current}\n{note}".strip() if current else note
         review = DedupeReview(
             tenant_id=tenant_id,
             created_by=actor_id,
@@ -161,6 +220,8 @@ def capture_inbound(
         utm_campaign=payload.get("utm_campaign") or "",
         device=payload.get("device") or "",
         consent_email=bool(payload.get("consent_email")),
+        phone=str(payload.get("phone") or "")[:40],
+        request_note=str(payload.get("request_note") or "").strip(),
         status="accepted" if created_lead else "duplicate_review",
         captured_at=datetime.now(UTC),
         campaign_id=_as_uuid(payload.get("campaign_id")),

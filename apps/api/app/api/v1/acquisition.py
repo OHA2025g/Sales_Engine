@@ -23,7 +23,13 @@ from app.services.acquisition import capture_inbound, decide_dedupe
 from app.services.audit import write_audit
 from app.services.crm import latest_lead_score
 from app.services.orchestrator import process_pending_events
-from app.services.public_forms import create_form_key, list_form_keys, revoke_form_key
+from app.services.public_forms import (
+    create_form_key,
+    ensure_interest_form,
+    interest_form_url,
+    list_form_keys,
+    revoke_form_key,
+)
 from app.services.query import get_owned, paginate
 
 router = APIRouter(prefix="/acquisition", tags=["acquisition"])
@@ -140,6 +146,16 @@ def decide(
     db.commit()
     db.refresh(row)
     return Envelope(data=DedupeOut.model_validate(row))
+
+
+@router.get("/interest-form", response_model=Envelope[dict])
+def interest_form(
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("acquisition.read"))],
+) -> Envelope[dict]:
+    token = ensure_interest_form(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
+    db.commit()
+    return Envelope(data={"name": "Interest form", "url": interest_form_url(token)})
 
 
 @router.get("/form-keys", response_model=Envelope[list[dict]])

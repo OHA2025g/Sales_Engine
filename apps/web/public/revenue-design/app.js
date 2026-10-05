@@ -76,7 +76,7 @@ const VIEWS={home,flow,strategy,market,'market-detail':marketDetail,'campaign-de
 let current='home';let toastTimer;
 function toast(message){const node=document.getElementById('toast');node.textContent=message;node.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>node.classList.remove('show'),4200);}
 function navigate(id){location.hash='/'+id;}
-function render(){const raw=location.hash.replace(/^#\/?/,'');const [route,query='']=raw.split('?');const id=decodeURIComponent(route);current=SCREEN[id]?id:'home';const requested=new URLSearchParams(query).get('record');selectedRecord=requested?recordById(requested):null;const s=SCREEN[current];document.title=(selectedRecord?recordName(selectedRecord):s.title)+' · Sales Engine';let body=requested?(selectedRecord?renderRecordDetail(selectedRecord):emptyView('Record unavailable','This record is not saved in this browser. Open the record list and select an available record.')):s.view==='table'?renderTable(s):(VIEWS[s.view]?VIEWS[s.view]():emptyView('Design not available','This page needs a layout.'));if(!requested&&!['login','capture'].includes(s.id))body+=manualWorkspacePanel(s.id);document.getElementById('app').innerHTML=['login','capture'].includes(s.id)&&!requested?body:shell(s,body);bindPage();restorePageSettings();if(current==='voice'&&!selectedRecord)mountDograhTest();}
+function render(){const raw=location.hash.replace(/^#\/?/,'');const [route,query='']=raw.split('?');const id=decodeURIComponent(route);current=SCREEN[id]?id:'home';const requested=new URLSearchParams(query).get('record');selectedRecord=requested?recordById(requested):null;const s=SCREEN[current];document.title=(selectedRecord?recordName(selectedRecord):s.title)+' · Sales Engine';let body=requested?(selectedRecord?renderRecordDetail(selectedRecord):emptyView('Record unavailable','This record is not saved in this browser. Open the record list and select an available record.')):s.view==='table'?renderTable(s):(VIEWS[s.view]?VIEWS[s.view]():emptyView('Design not available','This page needs a layout.'));if(!requested&&!['login','capture'].includes(s.id))body+=manualWorkspacePanel(s.id);if(!requested&&['social','content','campaigns','acquisition'].includes(s.id))body+='<div id="interest-form-host" class="section-gap"></div>';document.getElementById('app').innerHTML=['login','capture'].includes(s.id)&&!requested?body:shell(s,body);bindPage();restorePageSettings();if(current==='voice'&&!selectedRecord)mountDograhTest();if(['social','content','campaigns','acquisition'].includes(current)&&!selectedRecord)mountInterestForm();}
 function bindPage(){document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>act(b.dataset.action)));const role=document.getElementById('role');if(role)role.addEventListener('change',()=>{state.role=role.value;render();toast('Role workspace changed. Access rules are illustrative.');});const search=document.querySelector('[data-table-search]'),filter=document.querySelector('[data-table-filter]');const filterTable=()=>{const q=(search?.value||'').toLowerCase(),f=(filter?.value||'').toLowerCase();let visible=0;document.querySelectorAll('tbody tr[data-search]').forEach(r=>{const yes=r.dataset.search.includes(q)&&(!f||r.dataset.search.includes(f));r.hidden=!yes;if(yes)visible++;});const no=document.getElementById('no-results');if(no)no.hidden=visible>0;};search?.addEventListener('input',filterTable);filter?.addEventListener('change',filterTable);document.getElementById('design-state')?.addEventListener('change',e=>document.getElementById('design-state-preview').innerHTML=statePreview(e.target.value));document.getElementById('login-form')?.addEventListener('submit',e=>{e.preventDefault();navigate('home');toast('Demo workspace opened.');});document.getElementById('capture-form')?.addEventListener('submit',e=>{e.preventDefault();captureLead(e.target);});}
 function modal(title,body,buttons=''){const d=document.getElementById('modal');d.innerHTML=`<header class="modal-head"><h2 id="modal-title">${h(title)}</h2><button class="btn iconbtn" data-modal-close aria-label="Close dialog">${icon('x')}</button></header><div class="modal-body">${body}</div>${buttons?`<footer class="modal-foot">${buttons}</footer>`:''}`;d.querySelector('[data-modal-close]').addEventListener('click',()=>d.close());d.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>act(b.dataset.action)));if(!d.open)d.showModal();return d;}
 function closeModal(){const d=document.getElementById('modal');d.close();if(!activeForm){d.classList.remove('entity-dialog');d.oncancel=null;}}
@@ -159,6 +159,10 @@ function integrations(){
     ['Meta distribution','Facebook, Instagram, and ads','megaphone'],
     ['Discovery source','Account and contact finding','search'],
     ['Voice provider','Calls and human escalation','phone'],
+    ['YouTube','Video posts and video ads','megaphone'],
+    ['X','Posts and ads','megaphone'],
+    ['WhatsApp','Business messages in India','phone'],
+    ['Google Ads','Search and YouTube ad distribution','search'],
     ['Customer usage','Activation and health evidence','chart'],
     ['Support signals','Incidents and recovery context','heart'],
     ['Billing signals','Contract and payment evidence','document']
@@ -238,10 +242,19 @@ function connectionCard(name){
     if(post.voice_widget)return {status:'Connected',note:'The Dograh voice widget is configured. Outbound calls still need a Dograh agent id.',action:'Refresh connection',kind:'good'};
     return {status:'Not ready',note:'Dograh needs an embed token, or an API key and agent id.',action:'Connect',kind:'warn'};
   }
+  if(name==='YouTube')return preparedChannel(!!post.youtube,'YouTube');
+  if(name==='X')return preparedChannel(!!post.x,'X');
+  if(name==='WhatsApp')return preparedChannel(!!post.whatsapp,'WhatsApp');
+  if(name==='Google Ads')return preparedChannel(!!post.google_ads,'Google Ads');
   if(name==='Customer usage')return signalCard(!!signals.usage,'usage');
   if(name==='Support signals')return signalCard(!!signals.support,'support');
   if(name==='Billing signals')return signalCard(!!signals.finance,'billing');
   return {status:'Not connected',note:'This connection is not configured.',action:'Connect',kind:'bad'};
+}
+
+function preparedChannel(on,label){
+  if(on)return {status:'Credentials saved',note:label+' credentials are saved. Publishing stays off until this provider is connected.',action:'Refresh connection',kind:'warn'};
+  return {status:'Not connected',note:label+' is ready to connect. Credentials are not configured yet.',action:'Check connection',kind:''};
 }
 
 function signalCard(on,label){
@@ -462,5 +475,26 @@ async function mountDograhTest(){
     });
   }catch(error){
     if(host.isConnected)host.innerHTML='<p>'+h(error&&error.message?error.message:'The voice agent test could not be loaded')+'</p>';
+  }
+}
+
+async function mountInterestForm(){
+  const host=document.getElementById('interest-form-host');
+  if(!host)return;
+  host.innerHTML=panel('Interest form','<div class="panel-body"><p class="small muted">Preparing the form viewers open from an ad or post.</p></div>');
+  try{
+    await ensureSession();
+    const res=await authed('/api/v1/acquisition/interest-form');
+    const body=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(messageOf(body,'The interest form could not be prepared'));
+    const url=(body.data&&body.data.url)||'';
+    if(!host.isConnected||!url)return;
+    host.innerHTML=panel('Interest form',`<div class="panel-body"><p>Put this link on the ad or post. A viewer can say what they want. A complete response with a name, email, request, and permission to be contacted becomes a lead.</p><p class="small" style="margin-top:12px;word-break:break-all">${h(url)}</p><div class="flex" style="margin-top:14px"><button type="button" class="btn primary" id="copy-interest-form">Copy form link</button></div></div>`);
+    host.querySelector('#copy-interest-form')?.addEventListener('click',async()=>{
+      try{await navigator.clipboard.writeText(url);toast('Interest form link copied.');}
+      catch{toast(url);}
+    });
+  }catch(error){
+    if(host.isConnected)host.innerHTML=panel('Interest form','<div class="panel-body"><p>'+h(error&&error.message?error.message:'The interest form could not be prepared')+'</p></div>');
   }
 }

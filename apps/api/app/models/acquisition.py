@@ -28,6 +28,8 @@ class InboundCapture(Base, TenantOwnedMixin):
     utm_campaign: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     device: Mapped[str] = mapped_column(String(40), default="", nullable=False)
     consent_email: Mapped[bool] = mapped_column(default=False, nullable=False)
+    phone: Mapped[str] = mapped_column(String(40), default="", nullable=False)
+    request_note: Mapped[str] = mapped_column(Text, default="", nullable=False)
     status: Mapped[str] = mapped_column(String(40), default="accepted", nullable=False)
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     campaign_id: Mapped[UUID | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True)

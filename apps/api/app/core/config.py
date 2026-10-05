@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     meta_page_id: str = ""
     meta_page_access_token: str = ""
     instagram_business_account_id: str = ""
+    youtube_api_key: str = ""
+    youtube_channel_id: str = ""
+    x_api_key: str = ""
+    x_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_access_token: str = ""
+    google_ads_developer_token: str = ""
+    google_ads_customer_id: str = ""
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
@@ -165,6 +173,22 @@ class Settings(BaseSettings):
     @property
     def instagram_posting_configured(self) -> bool:
         return bool(self.meta_page_posting_configured and self.instagram_business_account_id)
+
+    @property
+    def youtube_configured(self) -> bool:
+        return bool(self.youtube_api_key.strip() and self.youtube_channel_id.strip())
+
+    @property
+    def x_configured(self) -> bool:
+        return bool(self.x_api_key.strip() and self.x_access_token.strip())
+
+    @property
+    def whatsapp_configured(self) -> bool:
+        return bool(self.whatsapp_phone_number_id.strip() and self.whatsapp_access_token.strip())
+
+    @property
+    def google_ads_configured(self) -> bool:
+        return bool(self.google_ads_developer_token.strip() and self.google_ads_customer_id.strip())
 
     @property
     def twilio_configured(self) -> bool:

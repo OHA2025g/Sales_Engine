@@ -38,7 +38,7 @@ def create_social_post(
 ) -> Envelope[SocialPostOut]:
     channel = body.channel.strip().lower()
     if channel not in CHANNELS:
-        raise HTTPException(status_code=422, detail="Channel must be linkedin, facebook, or instagram.")
+        raise HTTPException(status_code=422, detail="Channel must be linkedin, facebook, instagram, youtube, x, or whatsapp.")
     row = publish_post(
         db,
         tenant_id=ctx.tenant_id,

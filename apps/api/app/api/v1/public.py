@@ -1,3 +1,4 @@
+import html
 import json
 from typing import Annotated
 
@@ -13,7 +14,7 @@ from app.models.identity import User
 from app.schemas.acquisition import CaptureIn, CaptureOut, CaptureResult
 from app.schemas.common import Envelope
 from app.schemas.crm import LeadOut, LeadScoreOut
-from app.services.acquisition import capture_inbound
+from app.services.acquisition import capture_inbound, hold_interest, interest_is_eligible
 from app.services.crm import latest_lead_score
 from app.services.orchestrator import process_pending_events
 from app.services.public_forms import resolve_form_key
@@ -34,19 +35,51 @@ def embeddable_form(token: str, request: Request, db: Annotated[Session, Depends
     enforce_rate_limit(key=f"public-form:{request.client.host if request.client else 'unknown'}", limit=60, window_seconds=60)
     resolve_form_key(db, token)
     endpoint = json.dumps(f"{str(request.base_url).rstrip('/')}/api/v1/public/forms/{token}/capture")
-    html = f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Contact</title>
-<style>body{{font-family:sans-serif;max-width:28rem;margin:2rem auto;}}label{{display:block;margin:.6rem 0 .2rem}}input,button{{width:100%;padding:.5rem}}</style>
-</head><body>
+    query = request.query_params
+    hidden = {
+        "source": query.get("source") or "public_form",
+        "channel": query.get("channel") or "website",
+        "campaign": query.get("campaign") or "",
+        "utm_source": query.get("utm_source") or query.get("channel") or "",
+        "utm_medium": query.get("utm_medium") or "social",
+        "utm_campaign": query.get("utm_campaign") or query.get("campaign") or "",
+        "ad_id": query.get("ad_id") or "",
+    }
+    hidden_html = "".join(
+        f'<input type="hidden" name="{html.escape(key)}" value="{html.escape(value)}">' for key, value in hidden.items()
+    )
+    page = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Tell us what you need</title>
+<style>
+body{{font-family:system-ui,sans-serif;background:#0d1118;color:#eef2fa;margin:0}}
+main{{max-width:32rem;margin:0 auto;padding:2rem 1.25rem 3rem}}
+h1{{font-size:1.6rem;margin:0 0 .5rem}}
+p{{line-height:1.5}}
+label{{display:block;margin:1rem 0 .35rem}}
+input,textarea{{width:100%;box-sizing:border-box;padding:.7rem;border:1px solid #293346;border-radius:8px;background:#101722;color:#eef2fa}}
+button{{margin-top:1.25rem;width:100%;padding:.8rem;border:0;border-radius:8px;background:#99a5ff;color:#101722;font-weight:650}}
+.row{{display:flex;gap:.75rem}}
+.row label{{flex:1}}
+.check{{display:flex;gap:.6rem;align-items:flex-start}}
+.check input{{width:auto;margin-top:.2rem}}
+#status{{min-height:1.4rem}}
+</style></head><body><main>
+<h1>Tell us what you need</h1>
+<p>Share a few details and what you want. If the request is eligible, it becomes a lead for the team to continue.</p>
 <form id="agrayian-form">
-<label>First name</label><input name="first_name" required>
-<label>Last name</label><input name="last_name" required>
-<label>Email</label><input name="email" type="email" required>
-<label>Company</label><input name="company_name">
-<label><input type="checkbox" name="consent_email" value="true"> I consent to email</label>
-<button type="submit">Submit</button>
+{hidden_html}
+<div class="row"><label>First name<input name="first_name" required autocomplete="given-name"></label><label>Last name<input name="last_name" required autocomplete="family-name"></label></div>
+<label>Work email<input name="email" type="email" required autocomplete="email"></label>
+<label>Phone<input name="phone" type="tel" autocomplete="tel"></label>
+<label>Company<input name="company_name" autocomplete="organization"></label>
+<label>Role<input name="title" autocomplete="organization-title"></label>
+<label>What do you want?<textarea name="request_note" required rows="5" placeholder="Describe the product or service you are interested in, and what you want next."></textarea></label>
+<label class="check"><input type="checkbox" name="consent_email" value="true" required> I am interested and agree to be contacted about this request.</label>
+<button type="submit">Send my interest</button>
 <p id="status"></p>
 </form>
+<p>A name, email, description, and permission to be contacted are required before this becomes a lead.</p>
+</main>
 <script>
 document.getElementById("agrayian-form").addEventListener("submit", async (event) => {{
   event.preventDefault();
@@ -57,12 +90,17 @@ document.getElementById("agrayian-form").addEventListener("submit", async (event
     headers: {{"Content-Type": "application/json"}},
     body: JSON.stringify(data)
   }});
-  document.getElementById("status").textContent = response.ok ? "Received." : "Could not submit.";
+  const body = await response.json().catch(() => ({{}}));
+  const payload = body.data || {{}};
+  const status = document.getElementById("status");
+  if (response.ok && payload.lead) status.textContent = "Thank you. Your interest is with the team.";
+  else if (response.ok && payload.capture && payload.capture.status === "duplicate_review") status.textContent = "We already have this email. The team will review it.";
+  else if (response.ok) status.textContent = "We saved this for review. A name, email, what you want, and permission to be contacted are required before it becomes a lead.";
+  else status.textContent = "Could not submit.";
 }});
 </script>
-<p>Powered by AGRAYIAN. Consent is required before outreach.</p>
 </body></html>"""
-    return HTMLResponse(html)
+    return HTMLResponse(page)
 
 
 @router.post("/forms/{token}/capture", response_model=Envelope[CaptureResult])
@@ -85,6 +123,17 @@ def public_capture(
     payload = body.model_dump()
     payload["source"] = payload.get("source") or "public_form"
     payload["channel"] = payload.get("channel") or "website"
+    if not interest_is_eligible(payload):
+        capture_row = hold_interest(db, tenant_id=key.tenant_id, actor_id=actor.id, payload=payload)
+        db.commit()
+        db.refresh(capture_row)
+        return Envelope(
+            data=CaptureResult(
+                capture=CaptureOut.model_validate(capture_row),
+                lead=None,
+                reviews_opened=0,
+            )
+        )
     capture_row, lead, reviews = capture_inbound(
         db,
         tenant_id=key.tenant_id,

@@ -23,6 +23,8 @@ class CaptureIn(APIModel):
     utm_campaign: str = ""
     device: str = ""
     consent_email: bool = False
+    phone: str = ""
+    request_note: str = ""
     campaign_id: UUID | None = None
     ad_id: str = ""
 
@@ -40,6 +42,8 @@ class CaptureOut(APIModel):
     utm_campaign: str
     landing_page: str
     consent_email: bool
+    phone: str = ""
+    request_note: str = ""
     status: str
     captured_at: datetime | None
     campaign_id: UUID | None = None

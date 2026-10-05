@@ -123,5 +123,6 @@ class PublicFormKey(Base, TenantOwnedMixin):
 
     name: Mapped[str] = mapped_column(String(120), default="website", nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    token_encrypted: Mapped[str] = mapped_column(Text, default="", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

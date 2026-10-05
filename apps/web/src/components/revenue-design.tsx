@@ -110,10 +110,10 @@ export function RevenueDesign() {
     data.src = "/revenue-design/data.js";
     data.onload = () => {
       const forms = document.createElement("script");
-      forms.src = "/revenue-design/forms.js?v=record-forms";
+      forms.src = "/revenue-design/forms.js?v=interest-form";
       forms.onload = () => {
         const app = document.createElement("script");
-        app.src = "/revenue-design/app.js?v=connection-card";
+        app.src = "/revenue-design/app.js?v=interest-channels";
         document.body.appendChild(app);
       };
       document.body.appendChild(forms);

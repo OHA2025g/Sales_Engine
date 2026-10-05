@@ -9,6 +9,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
+from app.core.security import decrypt_credential, encrypt_credential
 from app.models.funnel import PublicFormKey
 from app.services.audit import write_audit
 
@@ -25,6 +27,7 @@ def create_form_key(db: Session, *, tenant_id: UUID, actor_id: UUID, name: str =
         name=name.strip() or "website",
         token_hash=hash_form_token(raw),
         status="active",
+        token_encrypted=encrypt_credential(raw),
     )
     db.add(row)
     db.flush()
@@ -66,3 +69,29 @@ def list_form_keys(db: Session, tenant_id: UUID) -> list[PublicFormKey]:
 def revoke_form_key(db: Session, row: PublicFormKey) -> PublicFormKey:
     row.status = "revoked"
     return row
+
+
+INTEREST_FORM_NAME = "Interest form"
+
+
+def ensure_interest_form(db: Session, *, tenant_id: UUID, actor_id: UUID) -> str:
+    row = db.scalar(
+        select(PublicFormKey)
+        .where(
+            PublicFormKey.tenant_id == tenant_id,
+            PublicFormKey.name == INTEREST_FORM_NAME,
+            PublicFormKey.status == "active",
+            PublicFormKey.deleted_at.is_(None),
+            PublicFormKey.token_encrypted != "",
+        )
+        .order_by(PublicFormKey.created_at.desc())
+    )
+    if row is not None:
+        return decrypt_credential(row.token_encrypted)
+    _created, raw = create_form_key(db, tenant_id=tenant_id, actor_id=actor_id, name=INTEREST_FORM_NAME)
+    return raw
+
+
+def interest_form_url(token: str) -> str:
+    base = get_settings().public_api_base_url.rstrip("/")
+    return f"{base}/api/v1/public/forms/{token}"

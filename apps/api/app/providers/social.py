@@ -198,6 +198,27 @@ def posting_gaps(settings: Settings, channel: str) -> list[str]:
         if not settings.instagram_business_account_id:
             missing.append("INSTAGRAM_BUSINESS_ACCOUNT_ID")
         return missing
+    if channel == "youtube":
+        missing = []
+        if not settings.youtube_api_key.strip():
+            missing.append("YOUTUBE_API_KEY")
+        if not settings.youtube_channel_id.strip():
+            missing.append("YOUTUBE_CHANNEL_ID")
+        return missing
+    if channel == "x":
+        missing = []
+        if not settings.x_api_key.strip():
+            missing.append("X_API_KEY")
+        if not settings.x_access_token.strip():
+            missing.append("X_ACCESS_TOKEN")
+        return missing
+    if channel == "whatsapp":
+        missing = []
+        if not settings.whatsapp_phone_number_id.strip():
+            missing.append("WHATSAPP_PHONE_NUMBER_ID")
+        if not settings.whatsapp_access_token.strip():
+            missing.append("WHATSAPP_ACCESS_TOKEN")
+        return missing
     return ["channel"]
 
 

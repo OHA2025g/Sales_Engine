@@ -1,6 +1,9 @@
+from decimal import Decimal
+
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from app.providers.ads import get_ads_provider
 from app.providers.social import LinkedInSocialPublisher
 from tests.conftest import login
 
@@ -86,3 +89,23 @@ def test_linkedin_publisher_posts_organization_feed(monkeypatch) -> None:
     finally:
         monkeypatch.delenv("LINKEDIN_ORGANIZATION_ID", raising=False)
         get_settings.cache_clear()
+
+
+def test_prepared_channels_do_not_publish(client: TestClient) -> None:
+    headers = login(client)
+    for channel in ("youtube", "x", "whatsapp"):
+        created = client.post(
+            "/api/v1/social/posts",
+            headers=headers,
+            json={"channel": channel, "body": "This must not leave Sales Engine.", "link_url": "https://example.test/form"},
+        )
+        assert created.status_code == 200, created.text
+        row = created.json()["data"]
+        assert row["status"] == "not_configured"
+        assert row["is_mock"] is False
+        assert row["external_id"] == ""
+        assert "NOT_CONFIGURED" in row["error"]
+    ads = get_ads_provider("google_ads").create_campaign(name="Search", objective="leads", budget=Decimal("1"))
+    assert ads.ok is False
+    assert ads.is_mock is False
+    assert "not configured" in ads.reason

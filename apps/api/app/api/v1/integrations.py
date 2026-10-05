@@ -95,6 +95,10 @@ def integration_channels(
                 "meta_ads_mode": cfg.meta_ads_mode,
                 "meta_page": cfg.meta_page_posting_configured,
                 "instagram": cfg.instagram_posting_configured,
+                "youtube": cfg.youtube_configured,
+                "x": cfg.x_configured,
+                "whatsapp": cfg.whatsapp_configured,
+                "google_ads": cfg.google_ads_configured,
                 "discovery": cfg.apify_configured,
                 "gemini": cfg.gemini_configured,
                 "voice_widget": bool(

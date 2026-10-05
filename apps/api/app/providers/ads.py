@@ -908,9 +908,22 @@ def _ads_from_resolved(channel: str, resolved) -> AdsProvider:
     return MetaAdsProvider(token=token, ad_account_id=account_id)
 
 
+class PreparedAdsProvider(NotConfiguredAdsProvider):
+    def health(self) -> AdsHealth:
+        return AdsHealth(
+            provider=f"{self._channel}-ads",
+            is_mock=False,
+            connected=False,
+            reason=f"{self._channel} ads is not configured. No campaign was launched.",
+        )
+
+
 def get_ads_provider(channel: str, db: Session | None = None, tenant_id: UUID | None = None) -> AdsProvider:
     settings = get_settings()
     normalized = channel.strip().lower()
+    if normalized in {"youtube", "x", "whatsapp", "google", "google_ads"}:
+        name = "google_ads" if normalized in {"google", "google_ads"} else normalized
+        return PreparedAdsProvider(name)
     key = "linkedin" if normalized == "linkedin" else "meta"
     if normalized not in {"linkedin", "instagram", "meta", "facebook"}:
         return MockAdsProvider(normalized or "ads")
