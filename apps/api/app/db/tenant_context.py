@@ -12,11 +12,13 @@ SETTING_TENANT = "app.current_tenant_id"
 SETTING_LOGIN_EMAIL = "app.login_email"
 SETTING_REFRESH_HASH = "app.refresh_token_hash"
 SETTING_WEBHOOK_HASH = "app.webhook_token_hash"
+SETTING_FORM_HASH = "app.form_token_hash"
 
 INFO_TENANT = "rls_tenant_id"
 INFO_LOGIN_EMAIL = "rls_login_email"
 INFO_REFRESH_HASH = "rls_refresh_hash"
 INFO_WEBHOOK_HASH = "rls_webhook_hash"
+INFO_FORM_HASH = "rls_form_hash"
 
 
 def supports_rls(db: Session) -> bool:
@@ -59,6 +61,11 @@ def set_webhook_token_hash(db: Session, token_hash: str) -> None:
     _set_config(db, SETTING_WEBHOOK_HASH, token_hash)
 
 
+def set_form_token_hash(db: Session, token_hash: str) -> None:
+    db.info[INFO_FORM_HASH] = token_hash
+    _set_config(db, SETTING_FORM_HASH, token_hash)
+
+
 def clear_lookup_context(db: Session) -> None:
     db.info[INFO_LOGIN_EMAIL] = ""
     db.info[INFO_REFRESH_HASH] = ""
@@ -83,6 +90,7 @@ def _restore_rls_after_begin(session: Session, _transaction: object, connection:
         (INFO_LOGIN_EMAIL, SETTING_LOGIN_EMAIL),
         (INFO_REFRESH_HASH, SETTING_REFRESH_HASH),
         (INFO_WEBHOOK_HASH, SETTING_WEBHOOK_HASH),
+        (INFO_FORM_HASH, SETTING_FORM_HASH),
     )
     for info_key, setting_key in pairs:
         if info_key not in session.info:

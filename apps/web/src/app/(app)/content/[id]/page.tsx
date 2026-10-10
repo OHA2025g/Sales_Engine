@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
+import { PublishedPostLink } from "@/components/published-post-link";
 import { DeniedState, ErrorState, LoadingState } from "@/components/states";
 import { Button, Field, Input, Textarea } from "@/components/ui";
 import { StatusPill } from "@/components/workspace-ui";
@@ -18,6 +19,7 @@ type Draft = {
   cta: string;
   status: string;
   error: string;
+  permalink?: string;
 };
 
 export default function ContentEditorPage() {
@@ -65,8 +67,9 @@ export default function ContentEditorPage() {
         nextHref="/calendar"
         nextLabel="Calendar"
       />
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <StatusPill tone={draft.status === "published" ? "success" : draft.status === "failed" ? "blocked" : "review"}>{draft.status}</StatusPill>
+        <PublishedPostLink href={draft.permalink} status={draft.status} />
       </div>
       <form
         className="panel max-w-3xl space-y-4 p-5"

@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     apify_actor_id: str = ""
     apify_max_items: int = 30
     apify_linkedin_process_token: str = ""
+    channel_search_provider: str = "auto"
+    google_cse_api_key: str = ""
+    google_cse_cx: str = ""
+    channel_search_apify_actor: str = "apify/google-search-scraper"
     discovery_provider: str = "mock"
     linkedin_access_token: str = ""
     linkedin_ad_account_id: str = ""
@@ -142,6 +146,26 @@ class Settings(BaseSettings):
     @property
     def apify_configured(self) -> bool:
         return bool(self.resolved_apify_token and self.apify_actor_id)
+
+    @property
+    def resolved_channel_search_provider(self) -> str:
+        choice = (self.channel_search_provider or "auto").strip().lower()
+        cse_ready = bool(self.google_cse_api_key.strip() and self.google_cse_cx.strip())
+        apify_ready = bool(self.resolved_apify_token.strip())
+        if choice == "google_cse":
+            return "google_cse" if cse_ready else "not_configured"
+        if choice == "apify":
+            return "apify" if apify_ready else "not_configured"
+        if choice == "gemini":
+            return "gemini" if self.gemini_configured else "not_configured"
+        if choice == "auto":
+            if cse_ready:
+                return "google_cse"
+            if apify_ready:
+                return "apify"
+            if self.gemini_configured:
+                return "gemini"
+        return "not_configured"
 
     @property
     def linkedin_ads_configured(self) -> bool:

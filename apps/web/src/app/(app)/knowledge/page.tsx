@@ -10,14 +10,21 @@ import { useAuth } from "@/lib/auth";
 import { labelize } from "@/lib/format";
 
 type Source = { id: string; title: string; status: string };
+type SourceDetail = Source & { text: string };
 
 export default function KnowledgePage() {
   const { can } = useAuth();
   const [title, setTitle] = useState("Playbook note");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["knowledge"],
     queryFn: async () => (await api<Source[]>("/api/v1/ai/knowledge")).data ?? [],
     enabled: can("knowledge.read"),
+  });
+  const detail = useQuery({
+    queryKey: ["knowledge", selectedId],
+    queryFn: async () => (await api<SourceDetail>(`/api/v1/ai/knowledge/${selectedId}`)).data,
+    enabled: can("knowledge.read") && Boolean(selectedId),
   });
 
   async function onUpload(event: FormEvent<HTMLFormElement>) {
@@ -67,9 +74,30 @@ export default function KnowledgePage() {
           ) : (
             <ul className="space-y-2">
               {rows.map((row) => (
-                <li key={row.id} className="panel flex items-center justify-between px-4 py-3 text-sm">
-                  <span>{row.title}</span>
-                  <Badge tone={row.status === "ready" ? "ok" : "gold"}>{labelize(row.status)}</Badge>
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    className="panel flex w-full items-center justify-between px-4 py-3 text-left text-sm"
+                    aria-expanded={selectedId === row.id}
+                    onClick={() => setSelectedId((current) => (current === row.id ? null : row.id))}
+                  >
+                    <span>{row.title}</span>
+                    <Badge tone={row.status === "ready" ? "ok" : "gold"}>{labelize(row.status)}</Badge>
+                  </button>
+                  {selectedId === row.id ? (
+                    <div className="panel mt-2 px-4 py-4">
+                      {detail.isLoading ? <p className="text-sm text-[var(--muted)]">Reading this source…</p> : null}
+                      {detail.isError ? <p className="text-sm text-red-700">This source could not be read.</p> : null}
+                      {detail.data ? (
+                        <div>
+                          <p className="text-sm font-medium text-ink">{detail.data.title}</p>
+                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">
+                            {detail.data.text || "This source has no stored text."}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

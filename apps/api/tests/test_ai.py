@@ -43,3 +43,17 @@ def test_knowledge_is_tenant_scoped(client: TestClient) -> None:
     ]
     assert hits_a
     assert hits_b == []
+
+
+def test_knowledge_detail_returns_the_stored_text(client: TestClient) -> None:
+    headers = login(client, "admin@agrayian.demo")
+    other = login(client, "admin@northline.demo")
+    rows = client.get("/api/v1/ai/knowledge", headers=headers).json()["data"]
+    source = next(row for row in rows if row["title"] == "AGRAYIAN AI Labs offering overview")
+    detail = client.get(f"/api/v1/ai/knowledge/{source['id']}", headers=headers)
+    assert detail.status_code == 200
+    body = detail.json()["data"]
+    assert "governance" in body["text"]
+    assert body["title"] == source["title"]
+    hidden = client.get(f"/api/v1/ai/knowledge/{source['id']}", headers=other)
+    assert hidden.status_code == 404

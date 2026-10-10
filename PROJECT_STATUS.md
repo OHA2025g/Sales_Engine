@@ -24,6 +24,7 @@ Phases 0–22 plus Autopilot batches 1–8 and the full-funnel completion slice 
 - Revenue intelligence data foundation (batch 7): Alembic `012` task/feature-set/label/dataset/experiment/model/prediction tables, opportunity history, readiness gates, shadow-only inference, delayed evaluation, `/models` honesty. Docs 45–51. ADRs 023–028. Prediction tasks: all DATA_COLLECTION.
 - Controlled production pilot (batch 8): Alembic `013`, `tenants.operating_mode`, Pilot Readiness API/UI, IntegrityError idempotency, email `provider_actions`, Beat heartbeat, provider precedence, WhatsApp NOT_CONFIGURED, malware quarantine, mapping unlink, health rebuild, close-lost/churn/expansion outcomes, ROI/traces/briefs, docs 52–57, ADRs 029–035. CI RLS fail-if-empty, concurrency, E2E-LITE + E2E-POSTGRES.
 - Full-funnel completion: Alembic `014`–`016`, tenant credential execution, Exotel/Vapi split, India compliance gates, Recall/manual meeting capture, ads depth + campaigns UI, enrichment, public forms, campaign ROAS.
+- Channel search: keyword search grouped by Google, Facebook, Instagram, and LinkedIn. Rank is the Google result position. Missing search credentials stay `not_configured` and invent no posts. Alembic `024`.
 
 ## IN PROGRESS
 

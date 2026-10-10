@@ -24,6 +24,7 @@ export const PAGES: PageEntry[] = [
   { href: "/market/triggers", label: "Signal triggers", workspace: "Strategy & Intelligence", permission: "markets.read" },
   { href: "/campaigns", label: "Campaigns", workspace: "Marketing", permission: "campaigns.read" },
   { href: "/content", label: "Content studio", workspace: "Marketing", permission: "campaigns.read" },
+  { href: "/channel-search", label: "Channel search", workspace: "Marketing", permission: "campaigns.read" },
   { href: "/social", label: "Social", workspace: "Marketing", permission: "campaigns.read" },
   { href: "/calendar", label: "Calendar", workspace: "Marketing", permission: "meetings.read" },
   { href: "/acquisition", label: "Inbound", workspace: "Marketing", permission: "acquisition.read" },
@@ -105,6 +106,7 @@ export const WORKSPACES: WorkspaceNav[] = [
     children: [
       { href: "/campaigns", label: "Campaigns", permission: "campaigns.read" },
       { href: "/content", label: "Content studio", permission: "campaigns.read" },
+      { href: "/channel-search", label: "Channel search", permission: "campaigns.read" },
       { href: "/social", label: "Social publishing", permission: "campaigns.read" },
       { href: "/calendar", label: "Marketing calendar", permission: "meetings.read" },
       { href: "/acquisition", label: "Inbound acquisition", permission: "acquisition.read" },
@@ -203,7 +205,7 @@ export const WORKSPACES: WorkspaceNav[] = [
 const WORKSPACE_ROOTS: Record<string, string[]> = {
   command: ["/", "/intelligence", "/flow"],
   strategy: ["/strategy", "/icps", "/market"],
-  marketing: ["/campaigns", "/content", "/social", "/calendar", "/acquisition"],
+  marketing: ["/campaigns", "/content", "/channel-search", "/social", "/calendar", "/acquisition"],
   sales: ["/leads", "/accounts", "/contacts", "/imports", "/sequences", "/conversations", "/meetings", "/automation/voice-scripts", "/pipeline", "/deals", "/tasks", "/opportunities"],
   commercial: ["/commercial"],
   customers: ["/customers", "/onboarding", "/success", "/renewals", "/expansion", "/advocacy"],

@@ -32,6 +32,7 @@ class ContentDraft(Base, TenantOwnedMixin):
     status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     provider: Mapped[str] = mapped_column(String(40), default="", nullable=False)
     external_id: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    permalink: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     social_post_id: Mapped[UUID | None] = mapped_column(nullable=True)
     campaign_id: Mapped[UUID | None] = mapped_column(nullable=True)
     is_mock: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

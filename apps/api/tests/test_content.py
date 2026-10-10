@@ -66,6 +66,38 @@ def _ready(client: TestClient, headers: dict[str, str]) -> str:
     return product.json()["data"]["id"]
 
 
+def test_social_draft_fills_the_box_and_does_not_publish(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.content.get_llm_provider",
+        lambda *_args, **_kwargs: _StubLLM("One workspace for the revenue team. Reply to talk.", is_mock=False),
+    )
+    headers = login(client)
+    _ready(client, headers)
+    before = client.get("/api/v1/social/posts", headers=headers).json()["data"]
+    drafted = client.post("/api/v1/social/draft", headers=headers, json={"channel": "linkedin"})
+    assert drafted.status_code == 200
+    assert drafted.json()["data"]["body"] == "One workspace for the revenue team. Reply to talk."
+    after = client.get("/api/v1/social/posts", headers=headers).json()["data"]
+    assert after == before
+
+
+def test_social_draft_quota_publishes_nothing(client: TestClient, monkeypatch) -> None:
+    class _Quota:
+        def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:
+            _ = (prompt, system, model, reasoning)
+            raise RuntimeError("Gemini quota is used up. Please retry in 15h.")
+
+    monkeypatch.setattr("app.services.content.get_llm_provider", lambda *_args, **_kwargs: _Quota())
+    headers = login(client)
+    _ready(client, headers)
+    before = client.get("/api/v1/social/posts", headers=headers).json()["data"]
+    drafted = client.post("/api/v1/social/draft", headers=headers, json={"channel": "linkedin"})
+    assert drafted.status_code == 503
+    assert "quota" in drafted.json()["detail"].lower()
+    after = client.get("/api/v1/social/posts", headers=headers).json()["data"]
+    assert after == before
+
+
 def test_mock_generation_does_not_publish(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr("app.services.content.get_llm_provider", lambda *_args, **_kwargs: _StubLLM(STRUCTURED, is_mock=True))
     headers = login(client)
@@ -111,6 +143,7 @@ def test_publish_post_uses_social_publisher_without_a_live_send(client: TestClie
         assert body["status"] == "mock"
         assert body["is_mock"] is True
         assert body["social_post_id"]
+        assert body["permalink"] == ""
         listed = client.get("/api/v1/social/posts", headers=headers)
         assert any(item["id"] == body["social_post_id"] and item["is_mock"] is True for item in listed.json()["data"])
     finally:
@@ -202,6 +235,33 @@ def test_gemini_outage_records_a_failed_draft(client: TestClient, monkeypatch) -
     assert all(row["status"] == "failed" for row in rows)
     assert all("Nothing was written or published" in row["error"] for row in rows)
     assert all(row["body"] == "" for row in rows)
+
+
+def test_published_facebook_draft_exposes_post_link() -> None:
+    from uuid import uuid4
+
+    from app.schemas.content import ContentDraftOut
+
+    row = ContentDraftOut(
+        id=uuid4(),
+        product_id=None,
+        channel="facebook",
+        kind="post",
+        headline="Ready",
+        body="The draft is ready.",
+        cta="",
+        brief="",
+        destination_url="https://agrayianailabs.com",
+        image_url="",
+        status="published",
+        provider="facebook",
+        external_id="111_222",
+        social_post_id=None,
+        campaign_id=None,
+        is_mock=False,
+        error="",
+    )
+    assert row.permalink == "https://www.facebook.com/permalink.php?story_fbid=222&id=111"
 
 
 def test_ad_publish_stays_paused(client: TestClient, monkeypatch) -> None:

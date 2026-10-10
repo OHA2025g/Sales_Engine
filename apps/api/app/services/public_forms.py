@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import decrypt_credential, encrypt_credential
+from app.db.tenant_context import set_form_token_hash
 from app.models.funnel import PublicFormKey
 from app.services.audit import write_audit
 
@@ -45,6 +47,7 @@ def create_form_key(db: Session, *, tenant_id: UUID, actor_id: UUID, name: str =
 
 def resolve_form_key(db: Session, raw_token: str) -> PublicFormKey:
     hashed = hash_form_token(raw_token)
+    set_form_token_hash(db, hashed)
     row = db.scalar(
         select(PublicFormKey).where(
             PublicFormKey.token_hash == hashed,
@@ -93,5 +96,50 @@ def ensure_interest_form(db: Session, *, tenant_id: UUID, actor_id: UUID) -> str
 
 
 def interest_form_url(token: str) -> str:
-    base = get_settings().public_api_base_url.rstrip("/")
-    return f"{base}/api/v1/public/forms/{token}"
+    origin = get_settings().web_app_origin.strip().rstrip("/") or "http://localhost:3000"
+    return f"{origin}/capture/{token}"
+
+
+def form_key_url(row: PublicFormKey) -> str:
+    if row.status != "active" or not row.token_encrypted:
+        return ""
+    try:
+        token = decrypt_credential(row.token_encrypted)
+    except ValueError:
+        return ""
+    if not token:
+        return ""
+    return interest_form_url(token)
+
+
+def social_form_link(row: PublicFormKey, channel: str) -> str:
+    base = form_key_url(row)
+    if not base:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="This form has no public link.")
+    query = urlencode(
+        {
+            "source": "social_post",
+            "channel": channel,
+            "utm_source": channel,
+            "utm_medium": "social",
+            "utm_campaign": row.name.strip().replace(" ", "-")[:80],
+        }
+    )
+    link = f"{base}?{query}"
+    if len(link) > 500:
+        link = base
+    if len(link) > 500:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The form link is too long to attach.")
+    return link
+
+
+def active_form_name_taken(db: Session, tenant_id: UUID, name: str) -> bool:
+    row = db.scalar(
+        select(PublicFormKey.id).where(
+            PublicFormKey.tenant_id == tenant_id,
+            PublicFormKey.name == name,
+            PublicFormKey.status == "active",
+            PublicFormKey.deleted_at.is_(None),
+        )
+    )
+    return row is not None

@@ -18,6 +18,7 @@ from app.models.autonomy import (
     AutopilotSettings,
     EntityAutomationState,
 )
+from app.models.channel_search import ChannelSearch, ChannelSearchHit
 from app.models.content import ContentDraft, SellerProfile
 from app.models.crm import (
     ICP,
@@ -164,7 +165,7 @@ from app.models.signals import (
     UsageEvent,
     UsageRollup,
 )
-from app.models.social import SocialPost
+from app.models.social import SocialImage, SocialPost
 from app.models.workflow import WorkflowDefinition, WorkflowRun
 from app.services.ml import snapshots as _ml_snapshots  # noqa: F401
 
@@ -216,6 +217,9 @@ __all__ = [
     "DedupeReview",
     "Campaign",
     "SocialPost",
+    "SocialImage",
+    "ChannelSearch",
+    "ChannelSearchHit",
     "SellerProfile",
     "ContentDraft",
     "CampaignMember",

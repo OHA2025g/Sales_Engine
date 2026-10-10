@@ -17,6 +17,7 @@ export default function PublicCapturePage() {
   const token = String(params.token || "");
   const [status, setStatus] = useState("");
   const [pending, setPending] = useState(false);
+  const [heading, setHeading] = useState("Tell us what you need");
   const [attribution, setAttribution] = useState<Attribution>({
     utm_source: "",
     utm_medium: "",
@@ -24,6 +25,19 @@ export default function PublicCapturePage() {
     campaign_id: "",
     ad_id: "",
   });
+
+  useEffect(() => {
+    if (!token) return;
+    const api = getApiBase();
+    void fetch(`${api}/api/v1/public/forms/${encodeURIComponent(token)}/meta`)
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as { data?: { name?: string } };
+        const name = body.data?.name?.trim();
+        if (name) setHeading(name);
+      })
+      .catch(() => undefined);
+  }, [token]);
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -41,25 +55,36 @@ export default function PublicCapturePage() {
     setPending(true);
     setStatus("");
     const data = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const query = new URLSearchParams(window.location.search);
     const api = getApiBase();
-    const response = await fetch(`${api}/api/v1/public/forms/${token}/capture`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        first_name: data.first_name,
-        last_name: data.last_name,
-        email: data.email,
-        company_name: data.company_name,
-        consent_email: data.consent_email === "true",
-        utm_source: attribution.utm_source,
-        utm_medium: attribution.utm_medium,
-        utm_campaign: attribution.utm_campaign,
-        campaign_id: attribution.campaign_id || null,
-        ad_id: attribution.ad_id,
-      }),
-    });
-    setPending(false);
-    setStatus(response.ok ? "Received. A human will follow only if you consented." : "This form could not be submitted.");
+    try {
+      const response = await fetch(`${api}/api/v1/public/forms/${encodeURIComponent(token)}/capture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: data.first_name,
+          last_name: data.last_name,
+          email: data.email,
+          phone: data.phone,
+          company_name: data.company_name,
+          title: data.title,
+          request_note: data.request_note,
+          consent_email: data.consent_email === "true",
+          source: query.get("source") || "public_form",
+          channel: query.get("channel") || "website",
+          utm_source: attribution.utm_source,
+          utm_medium: attribution.utm_medium,
+          utm_campaign: attribution.utm_campaign,
+          campaign_id: attribution.campaign_id || null,
+          ad_id: attribution.ad_id,
+        }),
+      });
+      setStatus(response.ok ? "Received. A human will follow only if you consented." : "This form could not be submitted.");
+    } catch {
+      setStatus("This form could not be submitted. Refresh the page and try again.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -70,19 +95,25 @@ export default function PublicCapturePage() {
           AGRAYIAN AI LABS
         </div>
         <div className="eyebrow">Inbound</div>
-        <h1>Discuss your operational workflow</h1>
+        <h1>{heading}</h1>
         <p className="muted" style={{ margin: "15px 0 26px" }}>
-          Share the process you want to improve. A human follows only if you consent.
+          Share a few details and what you want. A human follows only if you consent.
         </p>
         <form className="stack" onSubmit={submit}>
           <div className="form-grid">
             <label className="field">First name<input name="first_name" required autoComplete="given-name" /></label>
             <label className="field">Last name<input name="last_name" required autoComplete="family-name" /></label>
             <label className="field">Work email<input name="email" type="email" required autoComplete="email" /></label>
+            <label className="field">Phone<input name="phone" type="tel" autoComplete="tel" /></label>
             <label className="field">Company<input name="company_name" autoComplete="organization" /></label>
+            <label className="field">Role<input name="title" autoComplete="organization-title" /></label>
           </div>
+          <label className="field">
+            What do you want?
+            <textarea name="request_note" required rows={5} placeholder="Describe what you want next." />
+          </label>
           <label className="ds-flex small muted">
-            <input className="checkbox" type="checkbox" name="consent_email" value="true" />
+            <input className="checkbox" type="checkbox" name="consent_email" value="true" required />
             I agree to be contacted about this request.
           </label>
           <button className="btn primary" disabled={pending} type="submit">

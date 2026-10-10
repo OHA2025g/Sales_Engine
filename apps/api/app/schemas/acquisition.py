@@ -72,6 +72,18 @@ class DedupeDecision(APIModel):
     decision: str
 
 
+class PublicFormOut(APIModel):
+    id: UUID
+    name: str
+    status: str
+    url: str = ""
+    last_used_at: datetime | None = None
+
+
+class PublicFormIn(APIModel):
+    name: str = ""
+
+
 class AcquisitionOverview(APIModel):
     captures: int
     accepted: int

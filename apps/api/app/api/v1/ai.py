@@ -10,7 +10,7 @@ from app.ai.rag import ingest_text, retrieve
 from app.ai.runtime import draft_email, meeting_prep, research_account, run_copilot, summarize_entity
 from app.core.deps import AuthContext, require_permission
 from app.db.session import get_db
-from app.models.ai import AIApproval, KnowledgeSource
+from app.models.ai import AIApproval, KnowledgeChunk, KnowledgeSource
 from app.schemas.ai import (
     ApprovalDecision,
     ApprovalOut,
@@ -19,6 +19,7 @@ from app.schemas.ai import (
     EmailDraftRequest,
     EmailDraftResponse,
     KnowledgeHit,
+    KnowledgeSourceDetail,
     KnowledgeUploadResponse,
 )
 from app.schemas.common import Envelope, Meta
@@ -218,6 +219,28 @@ def search_knowledge(
 ) -> Envelope[list[KnowledgeHit]]:
     hits = retrieve(db, tenant_id=ctx.tenant_id, query=q)
     return Envelope(data=[KnowledgeHit(**hit) for hit in hits], meta=Meta(total=len(hits)))
+
+
+@router.get("/knowledge/{source_id}", response_model=Envelope[KnowledgeSourceDetail])
+def read_knowledge(
+    source_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("knowledge.read"))],
+) -> Envelope[KnowledgeSourceDetail]:
+    source = get_owned(db, KnowledgeSource, ctx.tenant_id, source_id)
+    chunks = db.scalars(
+        select(KnowledgeChunk)
+        .where(
+            KnowledgeChunk.tenant_id == ctx.tenant_id,
+            KnowledgeChunk.source_id == source.id,
+            KnowledgeChunk.deleted_at.is_(None),
+        )
+        .order_by(KnowledgeChunk.ordinal.asc())
+    ).all()
+    text = "\n\n".join(chunk.text.strip() for chunk in chunks if chunk.text.strip())
+    return Envelope(
+        data=KnowledgeSourceDetail(id=source.id, title=source.title, status=source.status, text=text)
+    )
 
 
 @router.get("/approvals", response_model=Envelope[list[ApprovalOut]])

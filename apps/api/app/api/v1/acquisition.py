@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,8 @@ from app.schemas.acquisition import (
     CaptureResult,
     DedupeDecision,
     DedupeOut,
+    PublicFormIn,
+    PublicFormOut,
 )
 from app.schemas.common import Envelope, Meta
 from app.schemas.crm import LeadOut, LeadScoreOut
@@ -24,8 +26,10 @@ from app.services.audit import write_audit
 from app.services.crm import latest_lead_score
 from app.services.orchestrator import process_pending_events
 from app.services.public_forms import (
+    active_form_name_taken,
     create_form_key,
     ensure_interest_form,
+    form_key_url,
     interest_form_url,
     list_form_keys,
     revoke_form_key,
@@ -158,27 +162,36 @@ def interest_form(
     return Envelope(data={"name": "Interest form", "url": interest_form_url(token)})
 
 
-@router.get("/form-keys", response_model=Envelope[list[dict]])
+@router.get("/form-keys", response_model=Envelope[list[PublicFormOut]])
 def list_public_form_keys(
     db: Annotated[Session, Depends(get_db)],
     ctx: Annotated[AuthContext, Depends(require_permission("acquisition.read"))],
-) -> Envelope[list[dict]]:
+) -> Envelope[list[PublicFormOut]]:
     rows = list_form_keys(db, ctx.tenant_id)
-    return Envelope(
-        data=[{"id": str(row.id), "name": row.name, "status": row.status, "last_used_at": row.last_used_at} for row in rows],
-        meta=Meta(total=len(rows)),
-    )
+    data = [
+        PublicFormOut(id=row.id, name=row.name, status=row.status, url=form_key_url(row), last_used_at=row.last_used_at)
+        for row in rows
+    ]
+    return Envelope(data=data, meta=Meta(total=len(data)))
 
 
 @router.post("/form-keys", response_model=Envelope[dict])
 def create_public_form_key(
     db: Annotated[Session, Depends(get_db)],
     ctx: Annotated[AuthContext, Depends(require_permission("acquisition.write"))],
-    name: str = "website",
+    body: PublicFormIn | None = None,
+    name: str = "",
 ) -> Envelope[dict]:
-    row, raw = create_form_key(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id, name=name)
+    label = ((body.name if body is not None else "") or name).strip()
+    if not label:
+        raise HTTPException(status_code=422, detail="Name the form.")
+    if len(label) > 120:
+        raise HTTPException(status_code=422, detail="Form name is too long.")
+    if active_form_name_taken(db, ctx.tenant_id, label):
+        raise HTTPException(status_code=409, detail="A form with that name already exists.")
+    row, raw = create_form_key(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id, name=label)
     db.commit()
-    return Envelope(data={"id": str(row.id), "name": row.name, "token": raw, "status": row.status})
+    return Envelope(data={"id": str(row.id), "name": row.name, "token": raw, "status": row.status, "url": form_key_url(row)})
 
 
 @router.post("/form-keys/{key_id}/revoke", response_model=Envelope[dict])

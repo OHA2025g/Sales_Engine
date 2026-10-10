@@ -42,7 +42,14 @@ def test_public_form_capture_is_key_scoped(client: TestClient) -> None:
     assert "dispatch" in lead["notes"]
     auth = client.get("/api/v1/acquisition/form-keys", headers=headers)
     assert auth.status_code == 200
-    assert any(row["name"] == "site" for row in auth.json()["data"])
+    listed = next(row for row in auth.json()["data"] if row["name"] == "site")
+    assert listed["url"].endswith(f"/capture/{token}")
+    page = client.get(f"/api/v1/public/forms/{token}")
+    assert page.status_code == 200
+    assert "site" in page.text
+    meta = client.get(f"/api/v1/public/forms/{token}/meta")
+    assert meta.status_code == 200
+    assert meta.json()["data"]["name"] == "site"
 
 
 def test_incomplete_interest_stays_in_review(client: TestClient) -> None:

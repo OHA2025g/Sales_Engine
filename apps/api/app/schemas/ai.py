@@ -39,6 +39,13 @@ class KnowledgeUploadResponse(APIModel):
     chunks: int
 
 
+class KnowledgeSourceDetail(APIModel):
+    id: UUID
+    title: str
+    status: str
+    text: str
+
+
 class KnowledgeHit(APIModel):
     chunk_id: str
     source_id: str

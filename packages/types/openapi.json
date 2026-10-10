@@ -109,7 +109,6 @@
           "lifecycle": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -150,7 +149,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -292,7 +290,6 @@
           "annual_revenue": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -585,7 +582,6 @@
           "payload_patch": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -2258,7 +2254,7 @@
       "Body_upload_knowledge_api_v1_ai_knowledge_post": {
         "properties": {
           "file": {
-            "contentMediaType": "application/octet-stream",
+            "format": "binary",
             "title": "File",
             "type": "string"
           },
@@ -2274,6 +2270,20 @@
         "title": "Body_upload_knowledge_api_v1_ai_knowledge_post",
         "type": "object"
       },
+      "Body_upload_social_image_api_v1_social_images_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_social_image_api_v1_social_images_post",
+        "type": "object"
+      },
       "BriefOut": {
         "properties": {
           "id": {
@@ -2286,7 +2296,6 @@
             "type": "string"
           },
           "payload": {
-            "additionalProperties": true,
             "title": "Payload",
             "type": "object"
           },
@@ -2382,7 +2391,6 @@
         "properties": {
           "budget": {
             "default": "0",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Budget",
             "type": "string"
           },
@@ -2404,7 +2412,6 @@
           "cpc": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2416,7 +2423,6 @@
           "cpl": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2433,7 +2439,6 @@
           "ctr": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2502,7 +2507,6 @@
           },
           "spent": {
             "default": "0",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Spent",
             "type": "string"
           },
@@ -2546,7 +2550,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -2574,7 +2577,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2589,7 +2591,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2604,7 +2605,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2665,7 +2665,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -2809,7 +2808,6 @@
         "properties": {
           "budget": {
             "default": "0",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Budget",
             "type": "string"
           },
@@ -2831,7 +2829,6 @@
           "cpc": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2843,7 +2840,6 @@
           "cpl": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2860,7 +2856,6 @@
           "ctr": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2922,7 +2917,6 @@
           },
           "spent": {
             "default": "0",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Spent",
             "type": "string"
           },
@@ -2971,7 +2965,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -3109,6 +3102,16 @@
             "title": "Last Name",
             "type": "string"
           },
+          "phone": {
+            "default": "",
+            "title": "Phone",
+            "type": "string"
+          },
+          "request_note": {
+            "default": "",
+            "title": "Request Note",
+            "type": "string"
+          },
           "source": {
             "default": "inbound",
             "title": "Source",
@@ -3215,6 +3218,16 @@
             ],
             "title": "Lead Id"
           },
+          "phone": {
+            "default": "",
+            "title": "Phone",
+            "type": "string"
+          },
+          "request_note": {
+            "default": "",
+            "title": "Request Note",
+            "type": "string"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -3281,6 +3294,151 @@
           "reviews_opened"
         ],
         "title": "CaptureResult",
+        "type": "object"
+      },
+      "ChannelBucketOut": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelHitOut"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "mode",
+          "provider",
+          "reason",
+          "hits"
+        ],
+        "title": "ChannelBucketOut",
+        "type": "object"
+      },
+      "ChannelHitOut": {
+        "properties": {
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rank",
+          "title",
+          "url",
+          "snippet"
+        ],
+        "title": "ChannelHitOut",
+        "type": "object"
+      },
+      "ChannelSearchIn": {
+        "properties": {
+          "query": {
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "ChannelSearchIn",
+        "type": "object"
+      },
+      "ChannelSearchOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelBucketOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "query",
+          "status",
+          "provider",
+          "created_at",
+          "channels"
+        ],
+        "title": "ChannelSearchOut",
+        "type": "object"
+      },
+      "ChannelSearchStatusOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "configured",
+          "detail"
+        ],
+        "title": "ChannelSearchStatusOut",
         "type": "object"
       },
       "ChurnIn": {
@@ -3641,6 +3799,11 @@
             "title": "Kind",
             "type": "string"
           },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          },
           "product_id": {
             "anyOf": [
               {
@@ -3745,7 +3908,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -3793,7 +3955,6 @@
             "type": "string"
           },
           "list_price": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "List Price",
             "type": "string"
           },
@@ -3847,7 +4008,6 @@
           "line_total": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3882,7 +4042,6 @@
           "unit_price": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3991,7 +4150,6 @@
           "total_value": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -4241,7 +4399,6 @@
           "citations": {
             "default": [],
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Citations",
@@ -4286,7 +4443,6 @@
             "type": "string"
           },
           "extra": {
-            "additionalProperties": true,
             "default": {},
             "title": "Extra",
             "type": "object"
@@ -4312,14 +4468,12 @@
           },
           "advocacy": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Advocacy",
             "type": "array"
           },
           "automation": {
-            "additionalProperties": true,
             "title": "Automation",
             "type": "object"
           },
@@ -4365,7 +4519,6 @@
             "title": "Finance Outstanding"
           },
           "growth_plan": {
-            "additionalProperties": true,
             "title": "Growth Plan",
             "type": "object"
           },
@@ -4380,7 +4533,6 @@
             ]
           },
           "health_components": {
-            "additionalProperties": true,
             "title": "Health Components",
             "type": "object"
           },
@@ -4453,7 +4605,6 @@
           },
           "milestones": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Milestones",
@@ -4592,7 +4743,6 @@
             "title": "Account Name"
           },
           "arr": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Arr",
             "type": "string"
           },
@@ -4704,7 +4854,6 @@
             "title": "Detected At"
           },
           "evidence": {
-            "additionalProperties": true,
             "title": "Evidence",
             "type": "object"
           },
@@ -5475,7 +5624,6 @@
             "type": "string"
           },
           "evidence": {
-            "additionalProperties": true,
             "title": "Evidence",
             "type": "object"
           },
@@ -6140,6 +6288,78 @@
           }
         },
         "title": "Envelope[CaptureResult]",
+        "type": "object"
+      },
+      "Envelope_ChannelSearchOut_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelSearchOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "Envelope[ChannelSearchOut]",
+        "type": "object"
+      },
+      "Envelope_ChannelSearchStatusOut_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelSearchStatusOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "Envelope[ChannelSearchStatusOut]",
         "type": "object"
       },
       "Envelope_ContactOut_": {
@@ -7114,6 +7334,42 @@
         "title": "Envelope[KPIOut]",
         "type": "object"
       },
+      "Envelope_KnowledgeSourceDetail_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeSourceDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "Envelope[KnowledgeSourceDetail]",
+        "type": "object"
+      },
       "Envelope_KnowledgeUploadResponse_": {
         "properties": {
           "data": {
@@ -8014,6 +8270,42 @@
         "title": "Envelope[SequenceDetail]",
         "type": "object"
       },
+      "Envelope_SocialDraftOut_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SocialDraftOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "Envelope[SocialDraftOut]",
+        "type": "object"
+      },
       "Envelope_SocialPostOut_": {
         "properties": {
           "data": {
@@ -8343,7 +8635,6 @@
           "data": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -8827,6 +9118,46 @@
           }
         },
         "title": "Envelope[list[CaptureOut]]",
+        "type": "object"
+      },
+      "Envelope_list_ChannelSearchOut__": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChannelSearchOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "Envelope[list[ChannelSearchOut]]",
         "type": "object"
       },
       "Envelope_list_ConnectorOut__": {
@@ -9989,6 +10320,46 @@
         "title": "Envelope[list[ProviderHealthOut]]",
         "type": "object"
       },
+      "Envelope_list_PublicFormOut__": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PublicFormOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "Envelope[list[PublicFormOut]]",
+        "type": "object"
+      },
       "Envelope_list_QuoteOut__": {
         "properties": {
           "data": {
@@ -10795,7 +11166,6 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
                   "type": "object"
                 },
                 "type": "array"
@@ -10913,7 +11283,6 @@
           "amount": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -10969,7 +11338,6 @@
           "outcome_value": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -11085,12 +11453,10 @@
       "ForecastOut": {
         "properties": {
           "best_case": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Best Case",
             "type": "string"
           },
           "committed": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Committed",
             "type": "string"
           },
@@ -11109,7 +11475,6 @@
             "type": "string"
           },
           "pipeline": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Pipeline",
             "type": "string"
           },
@@ -11118,7 +11483,6 @@
             "type": "string"
           },
           "weighted": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Weighted",
             "type": "string"
           },
@@ -11197,7 +11561,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -11273,7 +11636,6 @@
             "type": "array"
           },
           "payload": {
-            "additionalProperties": true,
             "title": "Payload",
             "type": "object"
           },
@@ -11593,7 +11955,6 @@
           },
           "rows": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Rows",
@@ -11651,7 +12012,6 @@
           },
           "rows": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Rows",
@@ -11883,7 +12243,6 @@
             "type": "integer"
           },
           "open_pipeline_value": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Open Pipeline Value",
             "type": "string"
           },
@@ -11912,7 +12271,6 @@
             "type": "integer"
           },
           "weighted_pipeline_value": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Weighted Pipeline Value",
             "type": "string"
           },
@@ -11974,6 +12332,35 @@
           "score"
         ],
         "title": "KnowledgeHit",
+        "type": "object"
+      },
+      "KnowledgeSourceDetail": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "text"
+        ],
+        "title": "KnowledgeSourceDetail",
         "type": "object"
       },
       "KnowledgeUploadResponse": {
@@ -13453,7 +13840,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -13490,7 +13876,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -13603,7 +13988,6 @@
           },
           "amount": {
             "default": "0",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -13738,13 +14122,11 @@
             "type": "string"
           },
           "new": {
-            "additionalProperties": true,
             "default": {},
             "title": "New",
             "type": "object"
           },
           "previous": {
-            "additionalProperties": true,
             "default": {},
             "title": "Previous",
             "type": "object"
@@ -14112,7 +14494,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               }
             ],
@@ -14159,7 +14540,6 @@
           },
           "list_price": {
             "default": "0",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "List Price",
             "type": "string"
           },
@@ -14391,6 +14771,58 @@
         "title": "ProviderHealthOut",
         "type": "object"
       },
+      "PublicFormIn": {
+        "properties": {
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "PublicFormIn",
+        "type": "object"
+      },
+      "PublicFormOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status"
+        ],
+        "title": "PublicFormOut",
+        "type": "object"
+      },
       "QuoteAcceptIn": {
         "properties": {
           "note": {
@@ -14451,7 +14883,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -14475,7 +14906,6 @@
             "type": "string"
           },
           "line_total": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Line Total",
             "type": "string"
           },
@@ -14494,7 +14924,6 @@
             "type": "string"
           },
           "unit_price": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unit Price",
             "type": "string"
           }
@@ -14542,7 +14971,6 @@
             "type": "string"
           },
           "subtotal": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Subtotal",
             "type": "string"
           },
@@ -14551,7 +14979,6 @@
             "type": "integer"
           },
           "total": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total",
             "type": "string"
           }
@@ -14797,7 +15224,6 @@
           "baseline_amount": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -14812,7 +15238,6 @@
             "type": "string"
           },
           "current_arr": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Current Arr",
             "type": "string"
           },
@@ -15311,7 +15736,6 @@
             "type": "string"
           },
           "extra": {
-            "additionalProperties": true,
             "title": "Extra",
             "type": "object"
           },
@@ -15415,6 +15839,60 @@
         "title": "SocialChannelStatus",
         "type": "object"
       },
+      "SocialDraftIn": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel"
+        ],
+        "title": "SocialDraftIn",
+        "type": "object"
+      },
+      "SocialDraftOut": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "link_url": {
+            "title": "Link Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "body",
+          "link_url"
+        ],
+        "title": "SocialDraftOut",
+        "type": "object"
+      },
+      "SocialExtraLink": {
+        "properties": {
+          "label": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Label",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "title": "SocialExtraLink",
+        "type": "object"
+      },
       "SocialPostIn": {
         "properties": {
           "body": {
@@ -15426,6 +15904,26 @@
           "channel": {
             "title": "Channel",
             "type": "string"
+          },
+          "extra_links": {
+            "items": {
+              "$ref": "#/components/schemas/SocialExtraLink"
+            },
+            "maxItems": 8,
+            "title": "Extra Links",
+            "type": "array"
+          },
+          "form_key_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Key Id"
           },
           "image_url": {
             "default": "",
@@ -15463,6 +15961,30 @@
             "title": "External Id",
             "type": "string"
           },
+          "extra_links": {
+            "items": {
+              "$ref": "#/components/schemas/SocialExtraLink"
+            },
+            "title": "Extra Links",
+            "type": "array"
+          },
+          "form_key_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Key Id"
+          },
+          "form_name": {
+            "default": "",
+            "title": "Form Name",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -15478,6 +16000,11 @@
           },
           "link_url": {
             "title": "Link Url",
+            "type": "string"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
             "type": "string"
           },
           "provider": {
@@ -15504,6 +16031,51 @@
         "title": "SocialPostOut",
         "type": "object"
       },
+      "SocialPostUpdate": {
+        "properties": {
+          "body": {
+            "maxLength": 3000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "extra_links": {
+            "items": {
+              "$ref": "#/components/schemas/SocialExtraLink"
+            },
+            "maxItems": 8,
+            "title": "Extra Links",
+            "type": "array"
+          },
+          "form_key_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Key Id"
+          },
+          "image_url": {
+            "default": "",
+            "title": "Image Url",
+            "type": "string"
+          },
+          "link_url": {
+            "default": "",
+            "title": "Link Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "SocialPostUpdate",
+        "type": "object"
+      },
       "StageAdvanceIn": {
         "properties": {
           "evidence": {
@@ -15525,7 +16097,6 @@
       "StageMixOut": {
         "properties": {
           "amount": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount",
             "type": "string"
           },
@@ -15632,7 +16203,6 @@
           },
           "arr": {
             "default": "0",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Arr",
             "type": "string"
           },
@@ -16336,13 +16906,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -16611,7 +17174,6 @@
             "type": "string"
           },
           "value_hint": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Value Hint",
             "type": "string"
           }
@@ -17497,7 +18059,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_list_dict__"
+                  "$ref": "#/components/schemas/Envelope_list_PublicFormOut__"
                 }
               }
             },
@@ -17532,7 +18094,7 @@
             "name": "name",
             "required": false,
             "schema": {
-              "default": "website",
+              "default": "",
               "title": "Name",
               "type": "string"
             }
@@ -17570,6 +18132,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicFormIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -17678,6 +18257,76 @@
           }
         ],
         "summary": "Revoke Public Form Key",
+        "tags": [
+          "acquisition"
+        ]
+      }
+    },
+    "/api/v1/acquisition/interest-form": {
+      "get": {
+        "operationId": "interest_form_api_v1_acquisition_interest_form_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Interest Form",
         "tags": [
           "acquisition"
         ]
@@ -19164,6 +19813,86 @@
           }
         ],
         "summary": "Search Knowledge",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/knowledge/{source_id}": {
+      "get": {
+        "operationId": "read_knowledge_api_v1_ai_knowledge__source_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_KnowledgeSourceDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Knowledge",
         "tags": [
           "ai"
         ]
@@ -20958,6 +21687,236 @@
         "summary": "Status",
         "tags": [
           "autonomy"
+        ]
+      }
+    },
+    "/api/v1/channel-search": {
+      "get": {
+        "operationId": "read_channel_searches_api_v1_channel_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_ChannelSearchOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Channel Searches",
+        "tags": [
+          "channel-search"
+        ]
+      },
+      "post": {
+        "operationId": "create_channel_search_api_v1_channel_search_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelSearchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ChannelSearchOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Channel Search",
+        "tags": [
+          "channel-search"
+        ]
+      }
+    },
+    "/api/v1/channel-search/status": {
+      "get": {
+        "operationId": "read_channel_search_status_api_v1_channel_search_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ChannelSearchStatusOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Channel Search Status",
+        "tags": [
+          "channel-search"
         ]
       }
     },
@@ -23313,6 +24272,76 @@
           }
         ],
         "summary": "Queue Calendar Book",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/v1/integrations/channels": {
+      "get": {
+        "operationId": "integration_channels_api_v1_integrations_channels_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Integration Channels",
         "tags": [
           "integrations"
         ]
@@ -33397,6 +34426,88 @@
         ]
       }
     },
+    "/api/v1/public/forms/{token}/meta": {
+      "get": {
+        "operationId": "public_form_meta_api_v1_public_forms__token__meta_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Form Meta",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/media/{token}": {
+      "get": {
+        "operationId": "public_media_api_v1_public_media__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Media",
+        "tags": [
+          "public"
+        ]
+      }
+    },
     "/api/v1/search": {
       "get": {
         "operationId": "global_search_api_v1_search_get",
@@ -33473,6 +34584,166 @@
         "summary": "Global Search",
         "tags": [
           "search"
+        ]
+      }
+    },
+    "/api/v1/social/draft": {
+      "post": {
+        "operationId": "draft_social_post_api_v1_social_draft_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_SocialDraftOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Draft Social Post",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/social/images": {
+      "post": {
+        "operationId": "upload_social_image_api_v1_social_images_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_social_image_api_v1_social_images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Social Image",
+        "tags": [
+          "social"
         ]
       }
     },
@@ -33619,6 +34890,96 @@
           }
         ],
         "summary": "Create Social Post",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/social/posts/{post_id}": {
+      "patch": {
+        "operationId": "update_social_post_api_v1_social_posts__post_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Correlation-Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialPostUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_SocialPostOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Social Post",
         "tags": [
           "social"
         ]
@@ -35406,7 +36767,6 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
                   "title": "Response Health Health Get",
                   "type": "object"
                 }
@@ -35426,7 +36786,6 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
                   "title": "Response Health Live Health Live Get",
                   "type": "object"
                 }
@@ -35446,7 +36805,6 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
                   "title": "Response Health Ready Health Ready Get",
                   "type": "object"
                 }
@@ -35510,7 +36868,6 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
                   "title": "Response Ready Ready Get",
                   "type": "object"
                 }

@@ -94,8 +94,9 @@ def content_drafts(
     db: Annotated[Session, Depends(get_db)],
     ctx: Annotated[AuthContext, Depends(require_permission("campaigns.read"))],
 ) -> Envelope[list[ContentDraftOut]]:
-    rows = [ContentDraftOut.model_validate(row) for row in list_drafts(db, ctx.tenant_id)]
-    return Envelope(data=rows, meta=Meta(total=len(rows)))
+    rows = list_drafts(db, ctx.tenant_id)
+    db.commit()
+    return Envelope(data=[ContentDraftOut.model_validate(row) for row in rows], meta=Meta(total=len(rows)))
 
 
 @router.post("/generate", response_model=Envelope[list[ContentDraftOut]])

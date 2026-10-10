@@ -3,7 +3,7 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from app.services.acquisition import capture_inbound, hold_interest, interest_is
 from app.services.crm import latest_lead_score
 from app.services.orchestrator import process_pending_events
 from app.services.public_forms import resolve_form_key
+from app.services.social_media import read_social_image
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -33,7 +34,8 @@ def _lead_out(db: Session, lead) -> LeadOut:
 @router.get("/forms/{token}", response_class=HTMLResponse)
 def embeddable_form(token: str, request: Request, db: Annotated[Session, Depends(get_db)]) -> HTMLResponse:
     enforce_rate_limit(key=f"public-form:{request.client.host if request.client else 'unknown'}", limit=60, window_seconds=60)
-    resolve_form_key(db, token)
+    key = resolve_form_key(db, token)
+    title = html.escape((key.name or "").strip() or "Tell us what you need")
     endpoint = json.dumps(f"{str(request.base_url).rstrip('/')}/api/v1/public/forms/{token}/capture")
     query = request.query_params
     hidden = {
@@ -49,7 +51,7 @@ def embeddable_form(token: str, request: Request, db: Annotated[Session, Depends
         f'<input type="hidden" name="{html.escape(key)}" value="{html.escape(value)}">' for key, value in hidden.items()
     )
     page = f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Tell us what you need</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
 <style>
 body{{font-family:system-ui,sans-serif;background:#0d1118;color:#eef2fa;margin:0}}
 main{{max-width:32rem;margin:0 auto;padding:2rem 1.25rem 3rem}}
@@ -64,7 +66,7 @@ button{{margin-top:1.25rem;width:100%;padding:.8rem;border:0;border-radius:8px;b
 .check input{{width:auto;margin-top:.2rem}}
 #status{{min-height:1.4rem}}
 </style></head><body><main>
-<h1>Tell us what you need</h1>
+<h1>{title}</h1>
 <p>Share a few details and what you want. If the request is eligible, it becomes a lead for the team to continue.</p>
 <form id="agrayian-form">
 {hidden_html}
@@ -101,6 +103,20 @@ document.getElementById("agrayian-form").addEventListener("submit", async (event
 </script>
 </body></html>"""
     return HTMLResponse(page)
+
+
+@router.get("/media/{token}")
+def public_media(token: str, request: Request, db: Annotated[Session, Depends(get_db)]) -> Response:
+    enforce_rate_limit(key=f"public-media:{request.client.host if request.client else 'unknown'}", limit=120, window_seconds=60)
+    data, content_type = read_social_image(db, token)
+    return Response(content=data, media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.get("/forms/{token}/meta", response_model=Envelope[dict])
+def public_form_meta(token: str, request: Request, db: Annotated[Session, Depends(get_db)]) -> Envelope[dict]:
+    enforce_rate_limit(key=f"public-form-meta:{request.client.host if request.client else 'unknown'}", limit=60, window_seconds=60)
+    key = resolve_form_key(db, token)
+    return Envelope(data={"name": key.name})
 
 
 @router.post("/forms/{token}/capture", response_model=Envelope[CaptureResult])

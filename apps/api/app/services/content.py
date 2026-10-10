@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.providers import CompletionResult, get_llm_provider
+from app.core.config import get_settings
 from app.models.content import ContentDraft, SellerProfile
 from app.models.lifecycle import Campaign, Product
 from app.providers.ads import get_ads_provider
+from app.providers.social import resolved_permalink
 from app.services.audit import write_audit
 from app.services.social import publish_post
 
@@ -108,13 +110,19 @@ def update_product_description(db: Session, *, tenant_id: UUID, product_id: UUID
 
 
 def list_drafts(db: Session, tenant_id: UUID) -> list[ContentDraft]:
-    return list(
+    rows = list(
         db.scalars(
             select(ContentDraft)
             .where(ContentDraft.tenant_id == tenant_id, ContentDraft.deleted_at.is_(None))
             .order_by(ContentDraft.created_at.desc())
         ).all()
     )
+    token = get_settings().meta_page_access_token
+    for row in rows:
+        if row.status != "published":
+            continue
+        row.permalink = resolved_permalink(row.channel, row.external_id, row.permalink, token=token)
+    return rows
 
 
 def update_draft(
@@ -215,6 +223,40 @@ def generate_drafts(
     return rows
 
 
+def draft_social_copy(db: Session, *, tenant_id: UUID, actor_id: UUID, channel: str) -> dict[str, str]:
+    network = channel.strip().lower()
+    if network not in {"linkedin", "facebook", "instagram"}:
+        raise HTTPException(status_code=422, detail="Gemini writes LinkedIn, Facebook, and Instagram posts.")
+    profile = get_profile(db, tenant_id)
+    if profile is None or not profile.company_name.strip() or not profile.summary.strip():
+        raise HTTPException(status_code=422, detail="Save a company name and what you sell before generating.")
+    product = _offer_product(db, tenant_id)
+    if product is None:
+        raise HTTPException(status_code=422, detail="Add a product description before generating. Empty copy is not invented.")
+    try:
+        result = get_llm_provider(db, tenant_id).complete(
+            _social_prompt(profile, product, network, _already_sent(db, tenant_id, product.id)),
+            system="You write one social post. Plain text only. Use only the facts you are given.",
+        )
+    except (httpx.HTTPError, RuntimeError) as exc:
+        detail = _quota_failure(exc) or "Gemini did not return a draft. Nothing was written or published."
+        raise HTTPException(status_code=503, detail=detail) from exc
+    text = _plain_post(result.text)
+    if not text or result.is_mock or "NOT_CONFIGURED" in result.text:
+        raise HTTPException(status_code=503, detail="Gemini did not return a draft. Nothing was written or published.")
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="content.draft_social",
+        entity_type="seller_profile",
+        entity_id=str(profile.id),
+        after={"channel": network, "chars": len(text)},
+        actor_type="ai",
+    )
+    return {"channel": network, "body": text, "link_url": profile.capture_url.strip()}
+
+
 def publish_draft(db: Session, *, tenant_id: UUID, actor_id: UUID, draft_id: UUID) -> ContentDraft:
     row = _draft(db, tenant_id, draft_id)
     if row.status in {"published", "paused", "mock"}:
@@ -235,6 +277,45 @@ def _draft(db: Session, tenant_id: UUID, draft_id: UUID) -> ContentDraft:
     if row is None:
         raise HTTPException(status_code=404, detail="Draft was not found.")
     return row
+
+
+def _offer_product(db: Session, tenant_id: UUID) -> Product | None:
+    described = [row for row in list_products(db, tenant_id) if row.description.strip()]
+    for row in described:
+        if row.kind == "subscription":
+            return row
+    return described[0] if described else None
+
+
+def _social_prompt(profile: SellerProfile, product: Product, channel: str, sent: list[ContentDraft]) -> str:
+    if product.list_price and Decimal(str(product.list_price)) > 0:
+        price = f"List price is {product.currency} {product.list_price}. Repeat this price only. Do not discount it."
+    else:
+        price = "No price is on file. Do not mention a price, discount, or customer count."
+    proof = profile.proof.strip() or "No proof is on file. Do not invent a customer story or a statistic."
+    link = profile.capture_url.strip() or "No capture link is on file. Tell the reader to reply. Do not invent a URL."
+    return (
+        f"Company: {profile.company_name}\n"
+        f"What the company does: {profile.summary}\n"
+        f"Who they sell to: {profile.audience or 'not specified'}\n"
+        f"Website: {profile.website or 'not specified'}\n"
+        f"Proof: {proof}\n"
+        f"Product: {product.name}\n"
+        f"Product description: {product.description}\n"
+        f"{price}\n"
+        f"Capture link to include exactly when a link is on file: {link}\n"
+        f"Channel: {channel}\n"
+        f"{_sent_block(sent)}\n\n"
+        "Write one post for that channel. Return only the post text. No headline label. No markdown."
+    )
+
+
+def _plain_post(text: str) -> str:
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        lines = [line for line in cleaned.splitlines() if not line.strip().startswith("```")]
+        cleaned = "\n".join(lines).strip()
+    return cleaned[:3000].strip()
 
 
 def _already_sent(db: Session, tenant_id: UUID, product_id: UUID) -> list[ContentDraft]:
@@ -493,6 +574,7 @@ def _publish_post(db: Session, *, tenant_id: UUID, actor_id: UUID, draft: Conten
     draft.social_post_id = posted.id
     draft.provider = posted.provider
     draft.external_id = posted.external_id
+    draft.permalink = posted.permalink or resolved_permalink(draft.channel, posted.external_id)
     draft.is_mock = posted.is_mock
     if posted.status == "published":
         draft.status = "published"

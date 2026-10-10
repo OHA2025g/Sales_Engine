@@ -3,6 +3,7 @@
 import { DataTable } from "@/components/data-table";
 import { Go, Notice } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
+import { PublishedPostLink } from "@/components/published-post-link";
 import { DeniedState, EmptyState, ErrorState, LoadingState } from "@/components/states";
 import { Badge, Button, Drawer, Field, FormActions, Input, Select, Textarea } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
@@ -45,6 +46,8 @@ type Draft = {
   image_url: string;
   status: string;
   error: string;
+  permalink: string;
+  external_id: string;
 };
 
 type ProfileForm = Omit<Profile, "id">;
@@ -169,6 +172,7 @@ export default function ContentPage() {
               <div className="ds-flex">
                 <Go href={`/content/${row.id}`}>Open editor</Go>
                 <Go href="/campaigns">View campaign</Go>
+                <PublishedPostLink href={row.permalink} status={row.status} />
               </div>
             </section>
           ))
@@ -281,28 +285,32 @@ export default function ContentPage() {
               header: "Status",
               cell: (row) => <Badge tone={tone(row.status)}>{labelize(row.status)}</Badge>,
             },
-            { key: "error", header: "Detail", cell: (row) => row.error || row.destination_url || "—" },
+            { key: "error", header: "Detail", cell: (row) => row.error || "—" },
             {
               key: "id",
               header: "",
-              cell: (row) =>
-                can("campaigns.write") && row.status !== "published" && row.status !== "paused" && row.status !== "mock" ? (
-                  <span className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditing(row);
-                        draftForm.reset({ headline: row.headline, body: row.body, cta: row.cta, image_url: row.image_url });
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button type="button" onClick={() => publish.mutate(row.id)} disabled={publish.isPending || (row.status === "failed" && !row.body)}>
-                      Publish
-                    </Button>
-                  </span>
-                ) : null,
+              cell: (row) => (
+                <span className="flex flex-wrap gap-2">
+                  <PublishedPostLink href={row.permalink} status={row.status} />
+                  {can("campaigns.write") && row.status !== "published" && row.status !== "paused" && row.status !== "mock" ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditing(row);
+                          draftForm.reset({ headline: row.headline, body: row.body, cta: row.cta, image_url: row.image_url });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button type="button" onClick={() => publish.mutate(row.id)} disabled={publish.isPending || (row.status === "failed" && !row.body)}>
+                        Publish
+                      </Button>
+                    </>
+                  ) : null}
+                </span>
+              ),
             },
           ]}
         />

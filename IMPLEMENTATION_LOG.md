@@ -1,5 +1,41 @@
 # Implementation Log
 
+## 2026-10-10 (Channel search uses Apify)
+
+- Channel search is back on Apify while the Gemini free-tier daily quota is used up. `CHANNEL_SEARCH_PROVIDER=apify`.
+
+## 2026-10-10 (Social extra links)
+
+- A social post can keep its form as the main link and also carry other links, such as a website. Those addresses are written into the post text. Alembic `027`.
+
+## 2026-10-10 (Channel search uses Gemini)
+
+- Channel search uses the configured Gemini model and Google Search. `CHANNEL_SEARCH_PROVIDER=gemini`.
+
+## 2026-10-10 (Edit a social post)
+
+- Social posts can be edited from the site. A post that never went out can change its text, form, and image, and is sent again. A live Facebook or LinkedIn post can change its caption. A live Instagram post cannot be changed by the app, so the edit publishes a new post and leaves the live one as it is.
+
+## 2026-10-10 (Channel search relevance)
+
+- Channel search drops a result when its title and text do not match the keyword. An empty channel says that no public posts matched. Rank stays the Google position of the results that remain.
+
+## 2026-10-10 (Channel search)
+
+- Marketing → Channel search ranks up to 10 public results for a keyword on Google, Facebook, Instagram, and LinkedIn. Rank is the Google result position. A missing Programmable Search key, Apify token, or Gemini model stores `not_configured` and invents no posts. Alembic `024`.
+
+## 2026-10-10 (Instagram form caption and image upload)
+
+- Instagram feed posts cannot embed a form on the photo. A selected form is written at the top of the caption so people can open it. A post can use a pasted image URL or an uploaded JPEG or PNG. Alembic `026`.
+
+## 2026-10-10 (Social form attach)
+
+- Named public forms can be created for different purposes. A social post selects one, and the server attaches that form's website link with social attribution. Visitors open the form and submit it as inbound interest. Alembic `023` stores the form on the post. Alembic `025` lets that public link resolve the form without a signed-in session.
+
+## 2026-10-10 (Published post link)
+
+- Content and Social show a View post link for published LinkedIn, Facebook, and Instagram posts. The URL comes from the network permalink or the stored post id. The company website is not used as the post.
+
 ## 2026-10-10 (Dograh embed)
 
 - The authenticated shell loads Dograh's official widget script (`#dograh-widget`) with `data-dograh-context` for `page_url` and `today`. Chat embed falls back to the voice embed token. `DOGRAH_WIDGET_ENVIRONMENT` is added to the built widget URL.

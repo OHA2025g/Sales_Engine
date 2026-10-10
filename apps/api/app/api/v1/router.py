@@ -6,6 +6,7 @@ from app.api.v1 import (
     ai,
     auth,
     autonomy,
+    channel_search,
     command_center,
     content,
     crm,
@@ -33,6 +34,7 @@ api_router.include_router(crm.router)
 api_router.include_router(ai.router)
 api_router.include_router(search.router)
 api_router.include_router(social.router)
+api_router.include_router(channel_search.router)
 api_router.include_router(content.router)
 api_router.include_router(imports.router)
 api_router.include_router(market.router)

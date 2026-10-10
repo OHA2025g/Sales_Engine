@@ -1,8 +1,10 @@
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
+from app.providers.social import public_post_url
 from app.schemas.common import APIModel
 
 
@@ -69,7 +71,16 @@ class ContentDraftOut(APIModel):
     status: str
     provider: str
     external_id: str
+    permalink: str = ""
     social_post_id: UUID | None
     campaign_id: UUID | None
     is_mock: bool
     error: str
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def attach_permalink(cls, value: Any, handler):
+        row = handler(value)
+        if not row.permalink:
+            row.permalink = public_post_url(row.channel, row.external_id)
+        return row

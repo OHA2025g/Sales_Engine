@@ -9,6 +9,7 @@ export type GeneratedPaths = {
   "/api/v1/acquisition/dedupe/{review_id}/decide": "post";
   "/api/v1/acquisition/form-keys": "get, post";
   "/api/v1/acquisition/form-keys/{key_id}/revoke": "post";
+  "/api/v1/acquisition/interest-form": "get";
   "/api/v1/acquisition/overview": "get";
   "/api/v1/activities": "get";
   "/api/v1/admin/audit": "get";
@@ -25,6 +26,7 @@ export type GeneratedPaths = {
   "/api/v1/ai/drafts/email": "post";
   "/api/v1/ai/knowledge": "get, post";
   "/api/v1/ai/knowledge/search": "get";
+  "/api/v1/ai/knowledge/{source_id}": "get";
   "/api/v1/ai/knowledge/{source_id}/file": "get";
   "/api/v1/ai/meeting-prep/accounts/{account_id}": "post";
   "/api/v1/ai/research/accounts/{account_id}": "post";
@@ -47,6 +49,8 @@ export type GeneratedPaths = {
   "/api/v1/autonomy/runs/{run_id}": "get";
   "/api/v1/autonomy/settings": "get, patch";
   "/api/v1/autonomy/status": "get";
+  "/api/v1/channel-search": "get, post";
+  "/api/v1/channel-search/status": "get";
   "/api/v1/command-center/activity": "get";
   "/api/v1/command-center/kpis": "get";
   "/api/v1/command-center/overview": "get";
@@ -72,6 +76,7 @@ export type GeneratedPaths = {
   "/api/v1/imports/preview": "post";
   "/api/v1/integrations": "get";
   "/api/v1/integrations/calendar/book": "post";
+  "/api/v1/integrations/channels": "get";
   "/api/v1/integrations/connectors": "get";
   "/api/v1/integrations/credentials": "post";
   "/api/v1/integrations/google/callback": "get";
@@ -183,8 +188,13 @@ export type GeneratedPaths = {
   "/api/v1/providers/actions/{action_id}/retry": "post";
   "/api/v1/public/forms/{token}": "get";
   "/api/v1/public/forms/{token}/capture": "post";
+  "/api/v1/public/forms/{token}/meta": "get";
+  "/api/v1/public/media/{token}": "get";
   "/api/v1/search": "get";
+  "/api/v1/social/draft": "post";
+  "/api/v1/social/images": "post";
   "/api/v1/social/posts": "get, post";
+  "/api/v1/social/posts/{post_id}": "patch";
   "/api/v1/social/status": "get";
   "/api/v1/tasks": "get, post";
   "/api/v1/tasks/{task_id}": "get, patch";
@@ -212,7 +222,7 @@ export type GeneratedPaths = {
   "/ready": "get";
 };
 
-export const generatedPathCount = 210;
+export const generatedPathCount = 220;
 export const generatedSchemaNames = [
   "AbmIn",
   "AbmOut",
@@ -239,6 +249,7 @@ export const generatedSchemaNames = [
   "AutopilotSettingsIn",
   "AutopilotSettingsOut",
   "Body_upload_knowledge_api_v1_ai_knowledge_post",
+  "Body_upload_social_image_api_v1_social_images_post",
   "BriefOut",
   "CalendarBookIn",
   "CalendarBookOut",
@@ -252,6 +263,11 @@ export const generatedSchemaNames = [
   "CaptureIn",
   "CaptureOut",
   "CaptureResult",
+  "ChannelBucketOut",
+  "ChannelHitOut",
+  "ChannelSearchIn",
+  "ChannelSearchOut",
+  "ChannelSearchStatusOut",
   "ChurnIn",
   "CloseLostIn",
   "ConnectorOut",
@@ -306,6 +322,8 @@ export const generatedSchemaNames = [
   "Envelope_CampaignMemberOut_",
   "Envelope_CampaignOut_",
   "Envelope_CaptureResult_",
+  "Envelope_ChannelSearchOut_",
+  "Envelope_ChannelSearchStatusOut_",
   "Envelope_ContactOut_",
   "Envelope_ContentDraftOut_",
   "Envelope_ContentProductOut_",
@@ -333,6 +351,7 @@ export const generatedSchemaNames = [
   "Envelope_InboxSimulateOut_",
   "Envelope_IntegrationAccountOut_",
   "Envelope_KPIOut_",
+  "Envelope_KnowledgeSourceDetail_",
   "Envelope_KnowledgeUploadResponse_",
   "Envelope_LeadOut_",
   "Envelope_LeadScoreOut_",
@@ -358,6 +377,7 @@ export const generatedSchemaNames = [
   "Envelope_SearchOut_",
   "Envelope_SellerProfileOut_",
   "Envelope_SequenceDetail_",
+  "Envelope_SocialDraftOut_",
   "Envelope_SocialPostOut_",
   "Envelope_TaskOut_",
   "Envelope_TeamOut_",
@@ -379,6 +399,7 @@ export const generatedSchemaNames = [
   "Envelope_list_BriefOut__",
   "Envelope_list_CampaignOut__",
   "Envelope_list_CaptureOut__",
+  "Envelope_list_ChannelSearchOut__",
   "Envelope_list_ConnectorOut__",
   "Envelope_list_ContactOut__",
   "Envelope_list_ContentDraftOut__",
@@ -408,6 +429,7 @@ export const generatedSchemaNames = [
   "Envelope_list_ProductOut__",
   "Envelope_list_ProviderActionOut__",
   "Envelope_list_ProviderHealthOut__",
+  "Envelope_list_PublicFormOut__",
   "Envelope_list_QuoteOut__",
   "Envelope_list_ReadinessOut__",
   "Envelope_list_RenewalOut__",
@@ -456,6 +478,7 @@ export const generatedSchemaNames = [
   "InviteIn",
   "KPIOut",
   "KnowledgeHit",
+  "KnowledgeSourceDetail",
   "KnowledgeUploadResponse",
   "LeadIn",
   "LeadOut",
@@ -497,6 +520,8 @@ export const generatedSchemaNames = [
   "PromoteIn",
   "ProviderActionOut",
   "ProviderHealthOut",
+  "PublicFormIn",
+  "PublicFormOut",
   "QuoteAcceptIn",
   "QuoteIn",
   "QuoteLineIn",
@@ -521,8 +546,12 @@ export const generatedSchemaNames = [
   "SessionOut",
   "SignalOut",
   "SocialChannelStatus",
+  "SocialDraftIn",
+  "SocialDraftOut",
+  "SocialExtraLink",
   "SocialPostIn",
   "SocialPostOut",
+  "SocialPostUpdate",
   "StageAdvanceIn",
   "StageMixOut",
   "SuccessObjectiveOut",

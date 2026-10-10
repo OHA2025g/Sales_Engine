@@ -1,11 +1,31 @@
 from decimal import Decimal
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from app.db.session import get_session
+from app.models.social import SocialPost
 from app.providers.ads import get_ads_provider
-from app.providers.social import LinkedInSocialPublisher
+from app.providers.social import (
+    LinkedInSocialPublisher,
+    MetaSocialPublisher,
+    SocialPublishResult,
+    instagram_caption,
+    public_post_url,
+)
 from tests.conftest import login
+
+
+def test_public_post_url_builds_network_links() -> None:
+    assert public_post_url("facebook", "111_222") == "https://www.facebook.com/permalink.php?story_fbid=222&id=111"
+    assert public_post_url("linkedin", "urn:li:share:9") == "https://www.linkedin.com/feed/update/urn:li:share:9"
+    assert public_post_url("instagram", "1789") == ""
+    assert public_post_url("facebook", "111_222", "https://www.facebook.com/111/posts/222") == "https://www.facebook.com/permalink.php?story_fbid=222&id=111"
+    assert (
+        public_post_url("facebook", "111_222", "https://www.facebook.com/permalink.php?story_fbid=p&id=111")
+        == "https://www.facebook.com/permalink.php?story_fbid=p&id=111"
+    )
 
 
 def test_mock_linkedin_post_is_not_sent(client: TestClient, monkeypatch) -> None:
@@ -86,9 +106,316 @@ def test_linkedin_publisher_posts_organization_feed(monkeypatch) -> None:
         assert result.ok is True
         assert result.is_mock is False
         assert result.external_id == "urn:li:share:1"
+        assert result.permalink == "https://www.linkedin.com/feed/update/urn:li:share:1"
     finally:
         monkeypatch.delenv("LINKEDIN_ORGANIZATION_ID", raising=False)
         get_settings.cache_clear()
+
+
+def test_facebook_publisher_stores_permalink() -> None:
+    class _Response:
+        def __init__(self, payload: dict, status_code: int = 200) -> None:
+            self.status_code = status_code
+            self.content = b"{}"
+            self._payload = payload
+
+        def json(self) -> dict:
+            return self._payload
+
+    class _Client:
+        def post(self, url: str, data: dict | None = None) -> _Response:
+            _ = (url, data)
+            return _Response({"id": "111_222"})
+
+        def get(self, url: str, params: dict | None = None) -> _Response:
+            _ = (url, params)
+            return _Response({"permalink_url": "https://www.facebook.com/111/posts/222"})
+
+    result = MetaSocialPublisher(page_id="111", page_token="token", client=_Client()).publish(body="Hello page.")  # type: ignore[arg-type]
+    assert result.ok is True
+    assert result.external_id == "111_222"
+    assert result.permalink == "https://www.facebook.com/111/posts/222"
+
+
+def test_selected_form_is_attached_to_the_post(client: TestClient) -> None:
+    headers = login(client)
+    created_form = client.post("/api/v1/acquisition/form-keys", headers=headers, json={"name": "Demo request"})
+    assert created_form.status_code == 200, created_form.text
+    form = created_form.json()["data"]
+    assert form["url"].endswith(f"/capture/{form['token']}")
+    posted = client.post(
+        "/api/v1/social/posts",
+        headers=headers,
+        json={"channel": "linkedin", "body": "Book a demo from this post.", "form_key_id": form["id"]},
+    )
+    assert posted.status_code == 200, posted.text
+    row = posted.json()["data"]
+    assert row["form_name"] == "Demo request"
+    assert row["form_key_id"] == form["id"]
+    assert row["link_url"].startswith(form["url"])
+    assert "utm_medium=social" in row["link_url"]
+    assert "utm_source=linkedin" in row["link_url"]
+    listed = client.get("/api/v1/social/posts", headers=headers)
+    assert any(item["id"] == row["id"] and item["form_name"] == "Demo request" for item in listed.json()["data"])
+    duplicate = client.post("/api/v1/acquisition/form-keys", headers=headers, json={"name": "Demo request"})
+    assert duplicate.status_code == 409
+    missing = client.post(
+        "/api/v1/social/posts",
+        headers=headers,
+        json={"channel": "linkedin", "body": "No such form.", "form_key_id": "00000000-0000-0000-0000-000000000099"},
+    )
+    assert missing.status_code == 404
+
+
+def test_instagram_caption_puts_the_form_link_first() -> None:
+    link = "https://example.test/capture/demo"
+    caption = instagram_caption("See the offer.", link)
+    assert caption.startswith(link)
+    assert "See the offer." in caption
+
+    class _Response:
+        def __init__(self, payload: dict) -> None:
+            self.status_code = 200
+            self.content = b"{}"
+            self._payload = payload
+
+        def json(self) -> dict:
+            return self._payload
+
+    class _Client:
+        def __init__(self) -> None:
+            self.caption = ""
+
+        def post(self, url: str, data: dict | None = None) -> _Response:
+            if data and "caption" in data:
+                self.caption = str(data["caption"])
+            return _Response({"id": "1789"})
+
+        def get(self, url: str, params: dict | None = None) -> _Response:
+            _ = (url, params)
+            return _Response({"permalink": "https://www.instagram.com/p/abc/"})
+
+    client = _Client()
+    result = MetaSocialPublisher(page_id="1", page_token="token", instagram_id="9", client=client).publish(  # type: ignore[arg-type]
+        body="See the offer.",
+        link_url=link,
+        image_url="https://cdn.example.test/photo.jpg",
+        instagram=True,
+    )
+    assert result.ok is True
+    assert client.caption.startswith(link)
+    local = MetaSocialPublisher(page_id="1", page_token="token", instagram_id="9", client=client).publish(  # type: ignore[arg-type]
+        body="See the offer.",
+        image_url="http://localhost:8000/api/v1/public/media/abc",
+        instagram=True,
+    )
+    assert local.ok is False
+    assert "cannot fetch" in local.reason
+
+
+def test_uploaded_image_is_readable_without_a_login(client: TestClient, monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OBJECT_STORAGE_LOCAL_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    headers = login(client)
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    try:
+        uploaded = client.post("/api/v1/social/images", headers=headers, files={"file": ("photo.png", png, "image/png")})
+        assert uploaded.status_code == 200, uploaded.text
+        url = uploaded.json()["data"]["url"]
+        token = url.rsplit("/", 1)[-1]
+        public = client.get(f"/api/v1/public/media/{token}")
+        assert public.status_code == 200, public.text
+        assert public.content == png
+        assert public.headers["content-type"].startswith("image/png")
+        rejected = client.post(
+            "/api/v1/social/images",
+            headers=headers,
+            files={"file": ("note.txt", b"not an image", "text/plain")},
+        )
+        assert rejected.status_code == 422
+    finally:
+        get_settings.cache_clear()
+
+
+def test_saved_post_can_be_edited(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("LINKEDIN_POSTING_MODE", "mock")
+    get_settings.cache_clear()
+    headers = login(client)
+    try:
+        created = client.post(
+            "/api/v1/social/posts",
+            headers=headers,
+            json={"channel": "linkedin", "body": "First wording."},
+        )
+        assert created.status_code == 200, created.text
+        row = created.json()["data"]
+        assert row["status"] == "mock"
+        edited = client.patch(
+            f"/api/v1/social/posts/{row['id']}",
+            headers=headers,
+            json={"body": "Revised wording."},
+        )
+        assert edited.status_code == 200, edited.text
+        updated = edited.json()["data"]
+        assert updated["id"] == row["id"]
+        assert updated["body"] == "Revised wording."
+        assert updated["status"] == "mock"
+        listed = client.get("/api/v1/social/posts", headers=headers)
+        matches = [item for item in listed.json()["data"] if item["id"] == row["id"]]
+        assert len(matches) == 1
+        assert matches[0]["body"] == "Revised wording."
+    finally:
+        monkeypatch.delenv("LINKEDIN_POSTING_MODE", raising=False)
+        get_settings.cache_clear()
+
+
+def test_published_instagram_post_cannot_be_edited(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("META_POSTING_MODE", "mock")
+    get_settings.cache_clear()
+    headers = login(client)
+    try:
+        created = client.post(
+            "/api/v1/social/posts",
+            headers=headers,
+            json={"channel": "instagram", "body": "Live caption.", "image_url": "https://cdn.example.test/photo.jpg"},
+        )
+        assert created.status_code == 200, created.text
+        row = created.json()["data"]
+    finally:
+        monkeypatch.delenv("META_POSTING_MODE", raising=False)
+        get_settings.cache_clear()
+    db = get_session()
+    try:
+        stored = db.get(SocialPost, UUID(row["id"]))
+        assert stored is not None
+        stored.status = "published"
+        stored.is_mock = False
+        stored.external_id = "1789"
+        stored.permalink = "https://www.instagram.com/p/abc/"
+        db.commit()
+    finally:
+        db.close()
+    edited = client.patch(
+        f"/api/v1/social/posts/{row['id']}",
+        headers=headers,
+        json={"body": "Changed caption."},
+    )
+    assert edited.status_code == 422
+    assert "cannot be changed" in edited.json()["detail"]
+    listed = client.get("/api/v1/social/posts", headers=headers)
+    kept = next(item for item in listed.json()["data"] if item["id"] == row["id"])
+    assert kept["body"] == "Live caption."
+
+
+def test_facebook_page_post_message_can_be_updated() -> None:
+    class _Response:
+        status_code = 200
+        content = b"{}"
+
+        def json(self) -> dict:
+            return {"success": True}
+
+    class _Client:
+        def __init__(self) -> None:
+            self.url = ""
+            self.data: dict | None = None
+
+        def post(self, url: str, data: dict | None = None) -> _Response:
+            self.url = url
+            self.data = data
+            return _Response()
+
+    client = _Client()
+    result = MetaSocialPublisher(page_id="111", page_token="token", client=client).update_message(  # type: ignore[arg-type]
+        external_id="111_222",
+        body="Updated caption.",
+    )
+    assert result.ok is True
+    assert client.url.endswith("/111_222")
+    assert client.data is not None
+    assert client.data["message"] == "Updated caption."
+
+
+def test_linkedin_commentary_can_be_updated() -> None:
+    class _Response:
+        status_code = 204
+        content = b""
+
+    class _Client:
+        def __init__(self) -> None:
+            self.url = ""
+            self.body: dict | None = None
+            self.headers: dict | None = None
+
+        def post(self, url: str, headers: dict | None = None, json: dict | None = None) -> _Response:
+            self.url = url
+            self.headers = headers
+            self.body = json
+            return _Response()
+
+    client = _Client()
+    result = LinkedInSocialPublisher(token="test-token", organization_id="143930363", client=client).update_commentary(  # type: ignore[arg-type]
+        external_id="urn:li:share:1",
+        body="Updated commentary.",
+    )
+    assert result.ok is True
+    assert client.url.endswith("urn%3Ali%3Ashare%3A1")
+    assert client.headers is not None
+    assert client.headers["X-RestLi-Method"] == "PARTIAL_UPDATE"
+    assert client.body == {"patch": {"$set": {"commentary": "Updated commentary."}}}
+
+
+def test_extra_links_stay_beside_the_form_and_are_written_into_the_text(client: TestClient, monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class _Publisher:
+        def publish(self, *, body: str, link_url: str = "", image_url: str = "") -> SocialPublishResult:
+            _ = image_url
+            captured["body"] = body
+            captured["link"] = link_url
+            return SocialPublishResult(ok=True, provider="mock-linkedin", is_mock=True)
+
+    monkeypatch.setattr("app.services.social.get_social_publisher", lambda channel: _Publisher())
+    headers = login(client)
+    created_form = client.post("/api/v1/acquisition/form-keys", headers=headers, json={"name": "Campus visit"})
+    assert created_form.status_code == 200, created_form.text
+    form = created_form.json()["data"]
+    posted = client.post(
+        "/api/v1/social/posts",
+        headers=headers,
+        json={
+            "channel": "linkedin",
+            "body": "Book a demo from this post.",
+            "form_key_id": form["id"],
+            "extra_links": [
+                {"label": "Website", "url": "https://example.test"},
+                {"label": "", "url": "https://example.test/brochure"},
+                {"label": "Again", "url": "https://example.test"},
+            ],
+        },
+    )
+    assert posted.status_code == 200, posted.text
+    row = posted.json()["data"]
+    assert row["link_url"].startswith(form["url"])
+    assert row["body"] == "Book a demo from this post."
+    assert row["extra_links"] == [
+        {"label": "Website", "url": "https://example.test"},
+        {"label": "", "url": "https://example.test/brochure"},
+    ]
+    assert captured["body"].startswith("Book a demo from this post.")
+    assert "Website: https://example.test" in captured["body"]
+    assert "https://example.test/brochure" in captured["body"]
+    assert captured["link"].startswith(form["url"])
+    rejected = client.post(
+        "/api/v1/social/posts",
+        headers=headers,
+        json={"channel": "linkedin", "body": "Bad link.", "extra_links": [{"label": "Website", "url": "javascript:alert(1)"}]},
+    )
+    assert rejected.status_code == 422
+    assert "http://" in rejected.json()["detail"]
 
 
 def test_prepared_channels_do_not_publish(client: TestClient) -> None:
