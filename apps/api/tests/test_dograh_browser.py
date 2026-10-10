@@ -56,6 +56,23 @@ def test_missing_token_is_not_ready() -> None:
     assert "API key" in result.reason
 
 
+def test_environment_is_included_in_built_widget_url() -> None:
+    result = build_dograh_browser_test(
+        api_base="http://localhost:8003",
+        ui_base="http://localhost:3010",
+        voice_token="emb-token",
+        chat_token="",
+        voice_widget_src="",
+        chat_widget_src="",
+        sales_script="",
+        environment="local",
+    )
+    assert "environment=local" in result.voice_widget_src
+    assert "apiEndpoint=http%3A%2F%2Flocalhost%3A8003" in result.voice_widget_src
+    assert "token=emb-token" in result.chat_widget_src
+    assert result.chat_widget_src.startswith("http://localhost:3010/embed/dograh-widget.js?")
+
+
 def test_settings_read_the_chat_token(monkeypatch) -> None:
     monkeypatch.setenv("DOGRAH_CHAT_EMBED_TOKEN", "chat-from-env")
     monkeypatch.setenv("DOGRAH_API_BASE", "https://dograh.example")

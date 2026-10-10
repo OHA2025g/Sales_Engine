@@ -99,6 +99,17 @@ def gemini_model_id(model: str) -> str:
     return model.strip().removeprefix("models/")
 
 
+def _gemini_error_message(response: object) -> str:
+    reader = getattr(response, "json", None)
+    payload = reader() if callable(reader) else {}
+    if not isinstance(payload, dict):
+        return ""
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return ""
+    return str(error.get("message") or "").strip()
+
+
 def gemini_reply_text(payload: dict) -> str:
     candidates = payload.get("candidates") or []
     if not candidates:
@@ -146,6 +157,10 @@ class GeminiLLMProvider(LLMProvider):
                 headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
                 json=body,
             )
+            status = getattr(response, "status_code", 200)
+            if status == 429:
+                detail = _gemini_error_message(response)
+                raise RuntimeError(detail or "Gemini quota is used up.")
             response.raise_for_status()
             payload = response.json()
         finally:

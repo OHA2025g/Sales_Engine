@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     apify_api_token: str = ""
     apify_token: str = ""
     apify_actor_id: str = ""
-    apify_max_items: int = 10
+    apify_max_items: int = 30
     apify_linkedin_process_token: str = ""
     discovery_provider: str = "mock"
     linkedin_access_token: str = ""
@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     dograh_ui_base: str = ""
     dograh_embed_token: str = ""
     dograh_chat_embed_token: str = ""
+    dograh_widget_environment: str = ""
     dograh_voice_widget_src: str = ""
     dograh_chat_widget_src: str = ""
     google_client_id: str = ""

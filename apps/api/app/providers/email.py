@@ -217,48 +217,66 @@ class GmailEmailProvider:
 
     def list_since(self, *, history_id: str = "") -> list[InboundEmail]:
         headers = {"Authorization": f"Bearer {self.access_token}"}
-        params: dict[str, str] = {"userId": "me"}
-        url = "https://gmail.googleapis.com/gmail/v1/users/me/history"
-        query = {"startHistoryId": history_id} if history_id else {}
         getter = self.http_get or httpx.get
-        try:
-            response = getter(url, headers=headers, params=query, timeout=20.0)
-        except Exception as exc:  # noqa: BLE001
-            self.last_failure_at = datetime.now(UTC)
-            self.last_error = str(exc)[:400]
-            return []
-        if response.status_code >= 400:
-            self.last_failure_at = datetime.now(UTC)
-            self.last_error = f"Gmail history {response.status_code}"
-            return []
-        payload = response.json() if hasattr(response, "json") else json.loads(response.text)
         messages: list[InboundEmail] = []
-        for history in payload.get("history") or []:
-            for added in history.get("messagesAdded") or []:
-                message = added.get("message") or {}
-                message_id = str(message.get("id") or "")
-                if not message_id:
-                    continue
-                fetched = self.get_message(provider_message_id=message_id)
-                if fetched is not None:
-                    messages.append(fetched)
-        if not history_id:
+        seen: set[str] = set()
+        history_ok = False
+        if history_id:
+            try:
+                response = getter(
+                    "https://gmail.googleapis.com/gmail/v1/users/me/history",
+                    headers=headers,
+                    params={"startHistoryId": history_id},
+                    timeout=20.0,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.last_failure_at = datetime.now(UTC)
+                self.last_error = str(exc)[:400]
+                response = None
+            if response is not None and response.status_code < 400:
+                history_ok = True
+                payload = response.json() if hasattr(response, "json") else json.loads(response.text)
+                for history in payload.get("history") or []:
+                    for added in history.get("messagesAdded") or []:
+                        message = added.get("message") or {}
+                        self._append_fetched(messages, seen, str(message.get("id") or ""))
+            elif response is not None:
+                self.last_failure_at = datetime.now(UTC)
+                self.last_error = f"Gmail history {response.status_code}"
+        if history_ok:
+            self.last_success_at = datetime.now(UTC)
+            self.last_error = ""
+            return messages
+        try:
             listed = getter(
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages",
                 headers=headers,
-                params={"q": "in:inbox", "maxResults": 20},
+                params={"q": "in:inbox newer_than:2d", "maxResults": 20},
                 timeout=20.0,
             )
-            if getattr(listed, "status_code", 200) < 400:
-                listed_payload = listed.json() if hasattr(listed, "json") else json.loads(listed.text)
-                for item in listed_payload.get("messages") or []:
-                    fetched = self.get_message(provider_message_id=str(item.get("id") or ""))
-                    if fetched is not None:
-                        messages.append(fetched)
-        _ = base64, params
+        except Exception as exc:  # noqa: BLE001
+            self.last_failure_at = datetime.now(UTC)
+            self.last_error = str(exc)[:400]
+            return messages
+        if getattr(listed, "status_code", 200) >= 400:
+            self.last_failure_at = datetime.now(UTC)
+            self.last_error = f"Gmail inbox {getattr(listed, 'status_code', 0)}"
+            return messages
+        listed_payload = listed.json() if hasattr(listed, "json") else json.loads(listed.text)
+        for item in listed_payload.get("messages") or []:
+            self._append_fetched(messages, seen, str(item.get("id") or ""))
         self.last_success_at = datetime.now(UTC)
         self.last_error = ""
         return messages
+
+    def _append_fetched(self, messages: list[InboundEmail], seen: set[str], message_id: str) -> None:
+        if not message_id or message_id in seen:
+            return
+        fetched = self.get_message(provider_message_id=message_id)
+        if fetched is None:
+            return
+        seen.add(message_id)
+        messages.append(fetched)
 
     def get_message(self, *, provider_message_id: str) -> InboundEmail | None:
         if not provider_message_id:

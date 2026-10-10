@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { connection } from "next/server";
-import { RevenueDesign } from "@/components/revenue-design";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 import "./design.css";
 
@@ -20,13 +20,19 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+function publicApiUrl(): string {
+  const value = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "");
+  return value || "http://localhost:8000";
+}
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await connection();
-  void children;
+  const bootstrap = `window.__AGRAYIAN_API_URL=${JSON.stringify(publicApiUrl())};`;
   return (
     <html lang="en">
       <body className={`${sans.variable} font-sans antialiased`}>
-        <RevenueDesign />
+        <script dangerouslySetInnerHTML={{ __html: bootstrap }} />
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

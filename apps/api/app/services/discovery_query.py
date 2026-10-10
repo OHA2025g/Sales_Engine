@@ -172,7 +172,7 @@ def build_discovery_query(
     *,
     search_query: str = "",
     profile_urls: list[str] | None = None,
-    max_items: int = 10,
+    max_items: int = 30,
     process_token: str = "",
 ) -> DiscoveryQuery:
     industries = _csv(icp.industries if icp else "")

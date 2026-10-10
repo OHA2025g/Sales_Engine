@@ -28,6 +28,7 @@ from app.models.lifecycle import (
 )
 from app.models.market import CompetitiveSignal
 from app.models.workflow import WorkflowRun
+from app.services.content import draft_email_from_facts
 from app.services.crm import add_activity
 from app.services.market import clamp
 from app.services.query import get_owned
@@ -271,7 +272,7 @@ def enroll_sequence(
                             "run_id": str(run_id) if run_id else "",
                             "template": first.template,
                             "subject": "Follow-up",
-                            "body": first.template,
+                            "body": draft_email_from_facts(db, tenant_id, first.template),
                             "why": "Qualified lead selected for the first eligible email sequence.",
                             "evidence": "Consent on file. Deterministic score met the tenant minimum.",
                             "risk": "External send. Mock provider until Gmail is connected.",

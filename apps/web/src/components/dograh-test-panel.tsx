@@ -1,16 +1,13 @@
 "use client";
 
 import { Button, Input } from "@/components/ui";
+import { applyDograhVisitorContext, dograhVisitorContext, type DograhChatTurn } from "@/lib/dograh-widget";
 import { api } from "@agrayian/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 type TestMode = "chat" | "voice";
 type Line = { role: "you" | "agent"; text: string };
-type ChatTurn = {
-  user_message?: { text?: string } | null;
-  assistant_message?: { text?: string } | null;
-};
 type DograhTest = {
   ready: boolean;
   reason: string;
@@ -18,23 +15,6 @@ type DograhTest = {
   chat_widget_src: string;
   sales_script: string;
 };
-type DograhWidgetApi = {
-  start: () => void;
-  end: () => void;
-  startChat?: () => void;
-  sendMessage?: (text: string) => Promise<ChatTurn[] | null>;
-  setContext?: (vars: Record<string, string>) => void;
-  onStatusChange?: (cb: (status: string, text?: string) => void) => void;
-  onMessage?: (cb: (text: string) => void) => void;
-  onChatStateChange?: (cb: (state: string) => void) => void;
-  onError?: (cb: (err: Error) => void) => void;
-};
-
-declare global {
-  interface Window {
-    DograhWidget?: DograhWidgetApi;
-  }
-}
 
 function widgetSrc(config: DograhTest, mode: TestMode): string {
   if (mode === "chat") return config.chat_widget_src;
@@ -43,7 +23,7 @@ function widgetSrc(config: DograhTest, mode: TestMode): string {
   return unreachable;
 }
 
-function turnsToLines(turns: ChatTurn[]): Line[] {
+function turnsToLines(turns: DograhChatTurn[]): Line[] {
   const lines: Line[] = [];
   for (const turn of turns) {
     const user = turn.user_message?.text?.trim();
@@ -85,12 +65,24 @@ export function DograhTestPanel() {
     setLines([]);
     setVoiceStatus("idle");
     setChatState("idle");
+    const existing = document.getElementById("dograh-widget");
+    if (existing instanceof HTMLScriptElement) {
+      applyDograhVisitorContext(existing);
+      if (window.DograhWidget) {
+        setScriptState("ready");
+        return;
+      }
+      existing.addEventListener("load", () => {
+        if (!cancelled) setScriptState("ready");
+      });
+      return;
+    }
     window.DograhWidget?.end?.();
-    document.getElementById("dograh-widget")?.remove();
     const script = document.createElement("script");
     script.id = "dograh-widget";
     script.async = true;
     script.src = activeSrc;
+    applyDograhVisitorContext(script);
     script.onload = () => {
       if (!cancelled) setScriptState("ready");
     };
@@ -126,8 +118,10 @@ export function DograhTestPanel() {
   }, [scriptState, activeSrc]);
 
   function applyContext() {
+    const vars = dograhVisitorContext();
     const script = config?.sales_script?.trim();
-    if (script) window.DograhWidget?.setContext?.({ sales_script: script });
+    if (script) vars.sales_script = script;
+    window.DograhWidget?.setContext?.(vars);
   }
 
   function onStart() {

@@ -97,7 +97,7 @@ export default function ContentPage() {
     },
   });
   const generate = useMutation({
-    mutationFn: (body: GenerateForm) => api("/api/v1/content/generate", { method: "POST", body: JSON.stringify(body) }),
+    mutationFn: (body: GenerateForm) => api<Draft[]>("/api/v1/content/generate", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
       generateForm.setValue("brief", "");
       void client.invalidateQueries({ queryKey: ["content-drafts"] });
@@ -137,6 +137,8 @@ export default function ContentPage() {
 
   const catalog = products.data ?? [];
   const rows = drafts.data ?? [];
+  const generated = generate.data?.data ?? [];
+  const generationFailed = generate.isSuccess && generated.length > 0 && generated.every((row) => row.status === "failed");
 
   return (
     <div>
@@ -253,7 +255,11 @@ export default function ContentPage() {
           <Button type="submit" disabled={generate.isPending || !can("campaigns.write") || catalog.length === 0}>
             {generate.isPending ? "Drafting…" : "Generate drafts"}
           </Button>
-          {generate.isSuccess ? <p className="text-sm text-emerald-700">Drafts are ready to review. Nothing was published.</p> : null}
+          {generationFailed ? (
+            <p className="text-sm text-red-700">{generated[0]?.error || "Drafts were not written. Nothing was published."}</p>
+          ) : generate.isSuccess ? (
+            <p className="text-sm text-emerald-700">Drafts are ready to review. Nothing was published.</p>
+          ) : null}
           {generate.isError ? <p className="text-sm text-red-700">Drafts were not created. Save the company and a product description first.</p> : null}
         </div>
       </form>

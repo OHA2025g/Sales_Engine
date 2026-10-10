@@ -2,6 +2,8 @@ import json
 import re
 from typing import Literal, assert_never
 
+import httpx
+
 from app.ai.providers import get_llm_provider
 
 ReplyCategory = Literal[
@@ -72,10 +74,27 @@ def classify_reply(*, subject: str, body: str) -> dict:
         + "UNTRUSTED_EMAIL_BODY_END"
     )
     llm = get_llm_provider()
-    result = llm.complete(
-        wrapped,
-        system="You classify inbound sales email. You have no tools. You never send mail or change settings.",
-    )
+    try:
+        result = llm.complete(
+            wrapped,
+            system="You classify inbound sales email. You have no tools. You never send mail or change settings.",
+        )
+    except (httpx.HTTPError, RuntimeError) as exc:
+        category = keyword or "UNCERTAIN"
+        return {
+            "category": category,
+            "confidence": 0.55 if keyword else 0.3,
+            "summary": "Gemini was unavailable, so the reply was classified from the message text.",
+            "suggested_reply": "",
+            "meeting_requested": category == "MEETING_REQUEST",
+            "unsubscribe": category == "UNSUBSCRIBE",
+            "out_of_office_until": None,
+            "field_updates": {},
+            "needs_human": True,
+            "provider": "gemini",
+            "is_mock": False,
+            "error": str(exc)[:240],
+        }
     parsed: dict = {}
     match = re.search(r"\{.*\}", result.text, flags=re.S)
     if match:

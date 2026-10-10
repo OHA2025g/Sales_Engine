@@ -13,6 +13,7 @@ from app.models.crm import ICP, Account, Lead, Opportunity, Task
 from app.models.execution import JourneyLink, SlaClock, StageEvidence
 from app.models.lifecycle import MeetingRecord, Sequence, SequenceEnrollment, SequenceStep
 from app.services.automation_state import get_state, upsert_state
+from app.services.content import draft_email_from_facts
 from app.services.crm import STAGE_PROBABILITY, add_activity
 
 SUPPORTED_STEPS = {"email_draft", "email_send", "send", "wait", "task", "branch", "meeting"}
@@ -268,7 +269,13 @@ def execute_due_step(
                 action_type="sequence.email.send",
                 title=f"Send sequence step for {lead.email}",
                 payload_json=json.dumps(
-                    {"enrollment_id": str(enrollment.id), "lead_id": str(lead.id), "template": step.template}
+                    {
+                        "enrollment_id": str(enrollment.id),
+                        "lead_id": str(lead.id),
+                        "template": step.template,
+                        "subject": "Follow-up",
+                        "body": draft_email_from_facts(db, tenant_id, step.template),
+                    }
                 ),
                 status="pending",
                 entity_type="lead",

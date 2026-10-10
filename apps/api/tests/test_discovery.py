@@ -320,7 +320,7 @@ def test_search_actor_omits_keyword_query_when_titles_exist() -> None:
     assert result.candidates == []
 
 
-def test_harvest_batch_never_exceeds_10() -> None:
+def test_harvest_batch_never_exceeds_30() -> None:
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -337,7 +337,7 @@ def test_harvest_batch_never_exceeds_10() -> None:
     )
     provider.discover(DiscoveryQuery(search_query="CIO", max_items=100))
     body = json.loads(str(seen["body"]))
-    assert body["maxItems"] == 10
+    assert body["maxItems"] == 30
 
 
 def test_empty_apify_dataset_invents_nobody() -> None:

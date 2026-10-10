@@ -32,9 +32,22 @@ def build_dograh_browser_test(
     voice_widget_src: str,
     chat_widget_src: str,
     sales_script: str,
+    environment: str = "",
 ) -> DograhBrowserTest:
-    voice = resolve_widget_src(explicit=voice_widget_src, ui_base=ui_base, api_base=api_base, token=voice_token)
-    chat = resolve_widget_src(explicit=chat_widget_src, ui_base=ui_base, api_base=api_base, token=chat_token)
+    voice = resolve_widget_src(
+        explicit=voice_widget_src,
+        ui_base=ui_base,
+        api_base=api_base,
+        token=voice_token,
+        environment=environment,
+    )
+    chat = resolve_widget_src(
+        explicit=chat_widget_src,
+        ui_base=ui_base,
+        api_base=api_base,
+        token=chat_token or voice_token,
+        environment=environment,
+    )
     ready = bool(voice or chat)
     return DograhBrowserTest(
         ready=ready,
@@ -55,14 +68,15 @@ def browser_test_from_settings(*, sales_script: str) -> DograhBrowserTest:
         voice_widget_src=settings.dograh_voice_widget_src,
         chat_widget_src=settings.dograh_chat_widget_src,
         sales_script=sales_script,
+        environment=settings.dograh_widget_environment,
     )
 
 
-def resolve_widget_src(*, explicit: str, ui_base: str, api_base: str, token: str) -> str:
+def resolve_widget_src(*, explicit: str, ui_base: str, api_base: str, token: str, environment: str = "") -> str:
     allowed = _allowed_widget_src(explicit)
     if allowed:
         return allowed
-    return _built_widget_src(ui_base=ui_base, api_base=api_base, token=token)
+    return _built_widget_src(ui_base=ui_base, api_base=api_base, token=token, environment=environment)
 
 
 def _allowed_widget_src(value: str) -> str:
@@ -79,7 +93,7 @@ def _allowed_widget_src(value: str) -> str:
     return raw
 
 
-def _built_widget_src(*, ui_base: str, api_base: str, token: str) -> str:
+def _built_widget_src(*, ui_base: str, api_base: str, token: str, environment: str = "") -> str:
     secret = token.strip()
     if not secret:
         return ""
@@ -90,6 +104,9 @@ def _built_widget_src(*, ui_base: str, api_base: str, token: str) -> str:
     if parsed.username or parsed.password:
         return ""
     params: dict[str, str] = {"token": secret}
+    env = environment.strip()
+    if env:
+        params["environment"] = env
     endpoint = api_base.strip().rstrip("/")
     if endpoint:
         params["apiEndpoint"] = endpoint

@@ -16,7 +16,7 @@ def normalize_actor_id(actor_id: str) -> str:
 
 SEARCH_EMAIL_MODE = "Full + email search"
 PROFILE_EMAIL_MODE = "Profile details + email search ($10 per 1k)"
-HARVEST_MAX_ITEMS = 10
+HARVEST_MAX_ITEMS = 30
 DISCOVERY_DAILY_LIMIT = 50
 HARVEST_LIMIT_MARKERS = ("run limit", "free user", "upgrade to a paid")
 

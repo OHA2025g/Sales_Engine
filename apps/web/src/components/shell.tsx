@@ -2,11 +2,13 @@
 
 import { CommandPalette } from "@/components/command-palette";
 import { CopilotDrawer } from "@/components/copilot-drawer";
+import { DograhEmbed } from "@/components/dograh-embed";
 import { Icon } from "@/components/icon";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { activeWorkspace, breadcrumbs, WORKSPACES } from "@/lib/navigation";
 import { ROLE_PREVIEWS, RolePreviewProvider, useRolePreview } from "@/lib/role-preview";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -81,14 +83,14 @@ function ShellFrame({ children }: { children: React.ReactNode }) {
     <div className="app-shell">
       {navOpen ? <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} /> : null}
       <aside className={cn("sidebar", navOpen && "open")} id="sidebar">
-        <a href="/" className="brand">
+        <Link href="/" className="brand">
           <span className="brand-mark">
             <i />
             <i />
             <i />
           </span>
           Sales Engine
-        </a>
+        </Link>
         <div className="tenant">
           <span className="avatar">AA</span>
           <div>
@@ -213,6 +215,7 @@ function ShellFrame({ children }: { children: React.ReactNode }) {
         }}
       />
       <CopilotDrawer open={copilot} seed={seed} onClose={() => setCopilot(false)} />
+      <DograhEmbed />
     </div>
   );
 }

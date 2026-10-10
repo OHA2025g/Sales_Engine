@@ -163,11 +163,16 @@ def generate_drafts(
     prompt = _prompt(profile, product, network, note, sent)
     system = _system_prompt()
     result = None
+    failure = ""
     for _attempt in range(2):
         try:
             result = get_llm_provider(db, tenant_id).complete(prompt, system=system)
             break
-        except (httpx.HTTPError, RuntimeError):
+        except (httpx.HTTPError, RuntimeError) as exc:
+            quota = _quota_failure(exc)
+            if quota:
+                failure = quota
+                break
             result = None
     if result is None:
         slots = [*POST_SLOTS, ("AD", network, "ad")]
@@ -178,7 +183,7 @@ def generate_drafts(
                 product.id,
                 channel,
                 kind,
-                "Gemini did not return a draft. Nothing was written or published.",
+                failure or "Gemini did not return a draft. Nothing was written or published.",
                 False,
                 note,
             )
@@ -246,6 +251,34 @@ def _already_sent(db: Session, tenant_id: UUID, product_id: UUID) -> list[Conten
             .limit(12)
         ).all()
     )
+
+
+def draft_email_from_facts(db: Session, tenant_id: UUID, facts: str) -> str:
+    source = facts.strip()
+    if not source:
+        return ""
+    try:
+        result = get_llm_provider(db, tenant_id).complete(
+            "Write the email body from these facts only. Do not add a price, customer, or claim that is not written here.\n\n"
+            + source,
+            system="You write one plain-text sales email body. No subject line. No markdown.",
+        )
+    except (httpx.HTTPError, RuntimeError):
+        return source
+    text = (result.text or "").strip()
+    if not text or result.is_mock or "NOT_CONFIGURED" in text:
+        return source
+    return text
+
+
+def _quota_failure(exc: Exception) -> str:
+    text = str(exc).strip()
+    lowered = text.lower()
+    if "quota" not in lowered and "retry in" not in lowered and "rate-limit" not in lowered and "rate limit" not in lowered:
+        return ""
+    if "Nothing was written or published." not in text:
+        text = f"{text} Nothing was written or published."
+    return text[:500]
 
 
 def _system_prompt() -> str:

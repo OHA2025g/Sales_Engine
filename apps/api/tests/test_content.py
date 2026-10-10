@@ -165,6 +165,27 @@ def test_optional_brief_is_stored_and_sent_copy_is_remembered(client: TestClient
         get_settings.cache_clear()
 
 
+def test_gemini_quota_is_not_retried(client: TestClient, monkeypatch) -> None:
+    calls = {"count": 0}
+
+    class _Quota:
+        def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:
+            _ = (prompt, system, model, reasoning)
+            calls["count"] += 1
+            raise RuntimeError("Gemini quota is used up. Please retry in 15h.")
+
+    monkeypatch.setattr("app.services.content.get_llm_provider", lambda *_args, **_kwargs: _Quota())
+    headers = login(client)
+    product_id = _ready(client, headers)
+    created = client.post("/api/v1/content/generate", headers=headers, json={"product_id": product_id, "ad_channel": "linkedin"})
+    assert created.status_code == 200
+    rows = created.json()["data"]
+    assert calls["count"] == 1
+    assert all(row["status"] == "failed" for row in rows)
+    assert all("quota" in row["error"].lower() for row in rows)
+    assert all("Nothing was written or published" in row["error"] for row in rows)
+
+
 def test_gemini_outage_records_a_failed_draft(client: TestClient, monkeypatch) -> None:
     class _Down:
         def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:

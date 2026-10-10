@@ -45,6 +45,24 @@ def emails_sent_to_lead_today(db: Session, tenant_id: UUID, lead_id: UUID) -> in
     )
 
 
+INTERESTED_REPLIES = {"POSITIVE_INTEREST", "MEETING_REQUEST"}
+
+
+def lead_showed_interest(db: Session, tenant_id: UUID, lead_id: UUID) -> bool:
+    classification = db.scalar(
+        select(EmailMessage.classification)
+        .where(
+            EmailMessage.tenant_id == tenant_id,
+            EmailMessage.deleted_at.is_(None),
+            EmailMessage.direction == "inbound",
+            EmailMessage.lead_id == lead_id,
+            EmailMessage.classification != "",
+        )
+        .order_by(EmailMessage.received_at.desc())
+    )
+    return (classification or "") in INTERESTED_REPLIES
+
+
 def last_outbound_at(db: Session, tenant_id: UUID, lead_id: UUID) -> datetime | None:
     return db.scalar(
         select(EmailMessage.sent_at)
@@ -67,7 +85,7 @@ def outreach_limit_reason(db: Session, settings: AutopilotSettings, lead_id: UUI
         and emails_sent_to_lead_today(db, settings.tenant_id, lead_id) >= settings.max_emails_per_contact_per_day
     ):
         return "Per-contact daily email cap reached"
-    if settings.minimum_hours_between_outreach > 0:
+    if settings.minimum_hours_between_outreach > 0 and not lead_showed_interest(db, settings.tenant_id, lead_id):
         previous = last_outbound_at(db, settings.tenant_id, lead_id)
         if previous is not None:
             if previous.tzinfo is None:

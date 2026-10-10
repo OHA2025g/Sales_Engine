@@ -1,5 +1,9 @@
 # Implementation Log
 
+## 2026-10-10 (Dograh embed)
+
+- The authenticated shell loads Dograh's official widget script (`#dograh-widget`) with `data-dograh-context` for `page_url` and `today`. Chat embed falls back to the voice embed token. `DOGRAH_WIDGET_ENVIRONMENT` is added to the built widget URL.
+
 ## 2026-10-02 (LinkedIn discovery)
 
 - HarvestAPI empty successes now surface the Apify free-plan 10-run limit instead of looking healthy. ICP queries send personas as titles, mapped function IDs, and LinkedIn-friendly locations, and they no longer AND thematic keywords into `searchQuery`.
