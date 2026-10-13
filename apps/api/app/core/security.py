@@ -6,12 +6,21 @@ from uuid import UUID
 
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHash, VerifyMismatchError
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.core.config import get_settings
 
-hasher = PasswordHasher()
+
+def _build_hasher() -> PasswordHasher:
+    # Production stays at the 19 MiB OWASP minimum. Other environments use
+    # 6 MiB and two iterations, which cuts verification by about 70 percent.
+    if get_settings().is_production:
+        return PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
+    return PasswordHasher(time_cost=2, memory_cost=6144, parallelism=1)
+
+
+hasher = _build_hasher()
 
 
 def _fernet() -> Fernet:
@@ -43,8 +52,16 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str) -> bool:
     try:
-        return hasher.verify(password_hash, password)
+        hasher.verify(password_hash, password)
     except VerifyMismatchError:
+        return False
+    return True
+
+
+def password_needs_rehash(password_hash: str) -> bool:
+    try:
+        return hasher.check_needs_rehash(password_hash)
+    except InvalidHash:
         return False
 
 

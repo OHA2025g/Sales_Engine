@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.models.ai import AIApproval
 from app.models.funnel import PublicFormKey
 from app.models.social import SocialPost
 from app.providers.social import (
@@ -15,15 +16,20 @@ from app.providers.social import (
     NotConfiguredSocialPublisher,
     SocialPublishResult,
     get_social_publisher,
+    instagram_can_fetch,
     posting_gaps,
     reaches_provider,
     resolved_permalink,
 )
+from app.services.social_artwork import draw_banner_png
+from app.services.social_media import read_social_image
 from app.services.audit import write_audit
 from app.services.public_forms import social_form_link
 from app.services.query import get_owned
 
 CHANNELS = ("linkedin", "facebook", "instagram", "youtube", "x", "whatsapp")
+APPROVAL_CHANNELS = ("linkedin", "facebook", "instagram", "youtube")
+_CHANNEL_LABELS = {"linkedin": "LinkedIn", "facebook": "Facebook", "instagram": "Instagram", "youtube": "YouTube"}
 LATER_POSTS = ("youtube", "x", "whatsapp")
 _POST_TEXT_LIMIT = 3000
 _EXTRA_LINK_LIMIT = 8
@@ -201,6 +207,295 @@ def publish_post(
     )
 
 
+def live_copy(headline: str, body: str) -> str:
+    text = f"{headline.strip()}\n\n{body.strip()}".strip()
+    return text[:_POST_TEXT_LIMIT]
+
+
+def submit_for_approval(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    headline: str,
+    body: str,
+    keyword: str,
+    ranking_parameter: str,
+    snippet: str,
+    context: str,
+    image_url: str = "",
+    video_url: str = "",
+    form_key_id: UUID | None = None,
+    channels: list[str],
+) -> tuple[AIApproval, list[SocialPost]]:
+    chosen: list[str] = []
+    for channel in channels:
+        normalized = channel.strip().lower()
+        if normalized not in APPROVAL_CHANNELS:
+            raise HTTPException(status_code=422, detail="Choose LinkedIn, Facebook, Instagram, or YouTube.")
+        if normalized not in chosen:
+            chosen.append(normalized)
+    if not chosen:
+        raise HTTPException(status_code=422, detail="Choose at least one channel.")
+    copy = live_copy(headline, body)
+    rows: list[SocialPost] = []
+    for normalized in chosen:
+        link_url, attached_form_id = _linked_form(db, tenant_id, normalized, form_key_id, "")
+        row = SocialPost(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            channel=normalized,
+            body=copy,
+            link_url=link_url,
+            image_url=image_url.strip(),
+            video_url=video_url.strip(),
+            extra_links="",
+            form_key_id=attached_form_id,
+            status="pending_approval",
+            provider="",
+            external_id="",
+            permalink="",
+            is_mock=False,
+            error="",
+        )
+        db.add(row)
+        rows.append(row)
+    db.flush()
+    names = ", ".join(_CHANNEL_LABELS[item] for item in chosen)
+    approval = AIApproval(
+        tenant_id=tenant_id,
+        created_by=actor_id,
+        action_level=2,
+        action_type="social.publish",
+        title=headline.strip()[:200],
+        payload_json=json.dumps(
+            {
+                "post_ids": [str(row.id) for row in rows],
+                "channels": chosen,
+                "who": names,
+                "why": context.strip(),
+                "evidence": snippet.strip(),
+                "keyword": keyword.strip(),
+                "ranking_parameter": ranking_parameter.strip(),
+                "risk": "Approving publishes this post on the selected channels.",
+                "expected_outcome": "The post stays unpublished until this approval is accepted.",
+                "message": copy,
+                "image_url": image_url.strip(),
+                "video_url": video_url.strip(),
+            }
+        ),
+        status="pending",
+        entity_type="social_post",
+        entity_id=str(rows[0].id),
+        idempotency_key=f"social.publish:{rows[0].id}",
+    )
+    db.add(approval)
+    db.flush()
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="social.approval_requested",
+        entity_type="ai_approval",
+        entity_id=str(approval.id),
+        after={"channels": chosen, "posts": [str(row.id) for row in rows]},
+    )
+    return approval, rows
+
+
+def submit_revision(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    post_id: UUID,
+    headline: str,
+    body: str,
+    keyword: str,
+    ranking_parameter: str,
+    snippet: str,
+    context: str,
+    image_url: str = "",
+    video_url: str = "",
+    form_key_id: UUID | None = None,
+    channels: list[str],
+) -> tuple[AIApproval, list[SocialPost]]:
+    current = get_owned(db, SocialPost, tenant_id, post_id)
+    approval, rows = submit_for_approval(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        headline=headline,
+        body=body,
+        keyword=keyword,
+        ranking_parameter=ranking_parameter,
+        snippet=snippet,
+        context=context,
+        image_url=image_url,
+        video_url=video_url,
+        form_key_id=form_key_id,
+        channels=channels,
+    )
+    if current.status != "published":
+        current.status = "rejected"
+        current.error = "Replaced by a newer edit."
+        _close_replaced_approval(db, tenant_id, current.id)
+    return approval, rows
+
+
+def _close_replaced_approval(db: Session, tenant_id: UUID, post_id: UUID) -> None:
+    pending = db.scalars(
+        select(AIApproval).where(
+            AIApproval.tenant_id == tenant_id,
+            AIApproval.action_type == "social.publish",
+            AIApproval.status == "pending",
+        )
+    ).all()
+    for approval in pending:
+        try:
+            payload = json.loads(approval.payload_json or "{}")
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        raw_ids = [str(item) for item in payload.get("post_ids") or []]
+        if str(post_id) not in raw_ids:
+            continue
+        still_waiting = False
+        for raw_id in raw_ids:
+            try:
+                sibling_id = UUID(raw_id)
+            except ValueError:
+                continue
+            sibling = db.get(SocialPost, sibling_id)
+            if sibling is not None and sibling.tenant_id == tenant_id and sibling.status == "pending_approval":
+                still_waiting = True
+                break
+        if not still_waiting:
+            approval.status = "rejected"
+            approval.decision_note = "Replaced by a newer edit."
+
+
+def briefs_for_posts(db: Session, tenant_id: UUID, post_ids: set[str]) -> dict[str, dict[str, str]]:
+    if not post_ids:
+        return {}
+    approvals = db.scalars(
+        select(AIApproval)
+        .where(AIApproval.tenant_id == tenant_id, AIApproval.action_type == "social.publish")
+        .order_by(AIApproval.created_at.desc())
+        .limit(200)
+    ).all()
+    found: dict[str, dict[str, str]] = {}
+    for approval in approvals:
+        try:
+            payload = json.loads(approval.payload_json or "{}")
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        brief = {
+            "headline": approval.title.strip(),
+            "keyword": str(payload.get("keyword") or "").strip(),
+            "ranking_parameter": str(payload.get("ranking_parameter") or "").strip(),
+            "snippet": str(payload.get("evidence") or "").strip(),
+            "context": str(payload.get("why") or "").strip(),
+        }
+        for raw_id in payload.get("post_ids") or []:
+            key = str(raw_id)
+            if key in post_ids and key not in found:
+                found[key] = brief
+    return found
+
+
+def reject_pending_posts(db: Session, *, tenant_id: UUID, approval: AIApproval, note: str) -> None:
+    try:
+        payload = json.loads(approval.payload_json or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        return
+    for raw_id in payload.get("post_ids") or []:
+        row = db.get(SocialPost, UUID(str(raw_id)))
+        if row is None or row.tenant_id != tenant_id or row.deleted_at is not None:
+            continue
+        if row.status != "pending_approval":
+            continue
+        row.status = "rejected"
+        row.error = note.strip() or "Rejected before posting."
+
+
+def publish_approved_posts(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    approval: AIApproval,
+    payload_patch: dict | None = None,
+) -> str:
+    try:
+        payload = json.loads(approval.payload_json or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    replacement = ""
+    if payload_patch and str(payload_patch.get("body") or "").strip():
+        replacement = str(payload_patch["body"]).strip()[:_POST_TEXT_LIMIT]
+    notes: list[str] = []
+    for raw_id in payload.get("post_ids") or []:
+        row = db.get(SocialPost, UUID(str(raw_id)))
+        if row is None or row.tenant_id != tenant_id or row.deleted_at is not None:
+            continue
+        if row.status != "pending_approval":
+            notes.append(f"{row.channel} already {row.status}")
+            continue
+        body = replacement or row.body
+        links = _stored_links(row.extra_links)
+        published = compose_post_text(body, links, row.link_url)
+        status, result = _send(db, tenant_id, row.channel, published, row.link_url, row.image_url or row.video_url)
+        row.body = body
+        row.status = status
+        row.provider = result.provider
+        row.external_id = result.external_id
+        row.permalink = resolved_permalink(
+            row.channel,
+            result.external_id,
+            result.permalink,
+            token=get_settings().meta_page_access_token if row.channel in {"facebook", "instagram"} else "",
+        )
+        row.is_mock = result.is_mock
+        row.error = "" if result.ok else result.reason
+        notes.append(f"{_CHANNEL_LABELS.get(row.channel, row.channel)}: {status}")
+    if not notes:
+        return "No posts were waiting for approval."
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="social.approved_publish",
+        entity_type="ai_approval",
+        entity_id=str(approval.id),
+        after={"result": notes},
+    )
+    return "Posted " + ", ".join(notes)
+
+
+def _stored_links(raw: str) -> list[dict[str, str]]:
+    if not raw.strip():
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    links: list[dict[str, str]] = []
+    for item in parsed:
+        if isinstance(item, dict) and item.get("url"):
+            links.append({"label": str(item.get("label") or ""), "url": str(item["url"])})
+    return links
+
+
 def revise_post(
     db: Session,
     *,
@@ -264,11 +559,46 @@ def revise_post(
     row.status = status
     row.provider = result.provider
     row.external_id = result.external_id or row.external_id
-    row.permalink = result.permalink or resolved_permalink(row.channel, row.external_id, row.permalink)
+    row.permalink = resolved_permalink(
+        row.channel,
+        row.external_id,
+        result.permalink or row.permalink,
+        token=get_settings().meta_page_access_token if row.channel in {"facebook", "instagram"} else "",
+    )
     row.is_mock = result.is_mock
     row.error = "" if result.ok else result.reason
     _audit_revision(db, tenant_id=tenant_id, actor_id=actor_id, row=row, before=before)
     return row
+
+
+def _bytes_for_meta(db: Session, channel: str, body: str, image_url: str) -> bytes:
+    if channel not in {"facebook", "instagram"}:
+        return b""
+    stored = _stored_media_bytes(db, image_url)
+    if channel == "facebook":
+        if stored and not instagram_can_fetch(image_url):
+            return stored
+        return b""
+    if image_url.strip() and instagram_can_fetch(image_url):
+        return b""
+    if stored:
+        return stored
+    title = next((line.strip() for line in body.splitlines() if line.strip()), "Post")
+    return draw_banner_png(title[:120])
+
+
+def _stored_media_bytes(db: Session, image_url: str) -> bytes:
+    marker = "/api/v1/public/media/"
+    if marker not in (image_url or ""):
+        return b""
+    token = image_url.split(marker, 1)[1].split("?", 1)[0].strip("/")
+    if not token:
+        return b""
+    try:
+        data, _kind = read_social_image(db, token)
+    except HTTPException:
+        return b""
+    return data
 
 
 def _linked_form(
@@ -332,7 +662,13 @@ def _send(
                 instagram_id=resolved.secrets.get("instagram_id", ""),
             )
     if isinstance(publisher, MetaSocialPublisher):
-        result = publisher.publish(body=body, link_url=link_url, image_url=image_url, instagram=normalized == "instagram")
+        result = publisher.publish(
+            body=body,
+            link_url=link_url,
+            image_url=image_url,
+            image_bytes=_bytes_for_meta(db, normalized, body, image_url),
+            instagram=normalized == "instagram",
+        )
     else:
         result = publisher.publish(body=body, link_url=link_url, image_url=image_url)
     status = "published" if result.ok and not result.is_mock else ("mock" if result.is_mock else "failed")
@@ -431,7 +767,12 @@ def _store_post(
         status=status,
         provider=result.provider,
         external_id=result.external_id,
-        permalink=result.permalink or resolved_permalink(channel, result.external_id),
+        permalink=resolved_permalink(
+            channel,
+            result.external_id,
+            result.permalink,
+            token=get_settings().meta_page_access_token if channel in {"facebook", "instagram"} else "",
+        ),
         is_mock=result.is_mock,
         error="" if result.ok else result.reason,
     )

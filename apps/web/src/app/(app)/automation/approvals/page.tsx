@@ -68,7 +68,7 @@ export default function ApprovalsPage() {
       <div className="mb-4 max-w-xs">
         <Field label="Category">
           <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-            {["ALL", "SALES", "CUSTOMER SUCCESS", "RENEWAL", "EXPANSION", "ADVOCACY"].map((item) => (
+            {["ALL", "SALES", "MARKETING", "CUSTOMER SUCCESS", "RENEWAL", "EXPANSION", "ADVOCACY"].map((item) => (
               <option key={item} value={item}>{item}</option>
             ))}
           </Select>
@@ -109,6 +109,9 @@ export default function ApprovalsPage() {
               ) : null}
               {row.entity_type === "campaign" && row.entity_id ? (
                 <Link href="/campaigns" className="text-sm text-brand">Inspect campaign</Link>
+              ) : null}
+              {row.entity_type === "social_post" ? (
+                <Link href="/social" className="text-sm text-brand">Open social posts</Link>
               ) : null}
               {row.entity_type === "contact" && row.entity_id ? (
                 <Link href="/conversations" className="text-sm text-brand">Inspect conversation</Link>

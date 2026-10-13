@@ -10,7 +10,9 @@ from app.providers.lead_discovery import (
     DiscoveryQuery,
     DiscoveryResult,
     MockLeadDiscoveryProvider,
+    leads_from_public_items,
     map_dataset_items,
+    search_public_profiles,
 )
 from app.services.discovery import clean_domain, infer_company_domain
 from app.services.discovery_query import build_discovery_query
@@ -504,12 +506,80 @@ def test_open_circuit_returns_last_vendor_error(client: TestClient, monkeypatch)
     monkeypatch.setattr("app.services.discovery.get_lead_discovery_provider", lambda *args, **kwargs: ShouldNotRun())
     monkeypatch.setattr("app.services.discovery.is_circuit_open", lambda *args, **kwargs: True)
     monkeypatch.setattr("app.services.discovery.get_health_state", lambda *args, **kwargs: FakeHealth())
+    monkeypatch.setattr(
+        "app.services.discovery.search_public_profiles",
+        lambda *args, **kwargs: DiscoveryResult(candidates=[], provider="public-search", is_mock=False, connected=True),
+    )
     headers = login(client)
     run = client.post("/api/v1/discovery/run", headers=headers, json={})
     assert run.status_code == 200
     body = run.json()["data"]
     assert body["created"] == 0
     assert "HarvestAPI" in body["reason"]
+
+
+def test_blank_icp_does_not_start_an_apify_run() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"blank discovery must not call Apify: {request.url}")
+
+    provider = ApifyLeadDiscoveryProvider(
+        token="token",
+        actor_id="harvestapi/linkedin-profile-search",
+        max_items=10,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    result = provider.discover(DiscoveryQuery())
+    assert result.candidates == []
+    assert result.failure_class == "CONFIGURATION"
+    assert "No Apify run was started" in result.reason
+
+
+def test_public_profile_titles_become_leads() -> None:
+    leads = leads_from_public_items(
+        [
+            {
+                "organicResults": [
+                    {
+                        "title": "Asha Mehta - CIO - Harbor Bank | LinkedIn",
+                        "url": "https://www.linkedin.com/in/asha-mehta",
+                    },
+                    {"title": "Harbor Bank | LinkedIn", "url": "https://www.linkedin.com/company/harbor"},
+                ]
+            }
+        ]
+    )
+    assert len(leads) == 1
+    assert leads[0].first_name == "Asha"
+    assert leads[0].last_name == "Mehta"
+    assert leads[0].title == "CIO"
+    assert leads[0].company_name == "Harbor Bank"
+    assert leads[0].email == ""
+
+
+def test_public_profile_search_reads_organic_results() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/runs"):
+            return httpx.Response(200, json={"data": {"id": "run-public", "status": "SUCCEEDED", "defaultDatasetId": "ds-public"}})
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "organicResults": [
+                        {"title": "Ravi Shah - CTO - Northwind | LinkedIn", "url": "https://www.linkedin.com/in/ravi-shah"}
+                    ]
+                }
+            ],
+        )
+
+    result = search_public_profiles(
+        DiscoveryQuery(job_titles=("CTO",), location_names=("India",)),
+        token="token",
+        actor_id="apify/google-search-scraper",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    assert result.provider == "public-search"
+    assert result.connected is True
+    assert result.candidates[0].last_name == "Shah"
 
 
 def test_mock_discovery_without_people(client: TestClient, monkeypatch) -> None:

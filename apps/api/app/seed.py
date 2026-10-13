@@ -24,6 +24,7 @@ from app.models.identity import (
     Role,
     RolePermission,
     Team,
+    TeamMember,
     Tenant,
     Territory,
     User,
@@ -234,7 +235,7 @@ def seed() -> None:
         roles_a = _ensure_roles(db, agrayian.id, permissions)
         admin = _user(db, agrayian.id, "admin@agrayian.demo", "Asha Menon", roles_a["Tenant Admin"], True)
         seller = _user(db, agrayian.id, "seller@agrayian.demo", "Rohan Iyer", roles_a["Sales Rep"])
-        _user(db, agrayian.id, "readonly@agrayian.demo", "Priya Nair", roles_a["Read Only"])
+        reader = _user(db, agrayian.id, "readonly@agrayian.demo", "Priya Nair", roles_a["Read Only"])
         _flags(db, agrayian.id)
         _autopilot_settings(db, agrayian.id, admin.id)
         _prompts(db, agrayian.id, admin.id)
@@ -252,8 +253,17 @@ def seed() -> None:
 
         set_tenant_context(db, agrayian.id)
 
-        if db.scalar(select(Team).where(Team.tenant_id == agrayian.id)) is None:
-            db.add(Team(tenant_id=agrayian.id, name="Enterprise Sales", team_type="sales"))
+        team = db.scalar(select(Team).where(Team.tenant_id == agrayian.id, Team.name == "Enterprise Sales"))
+        if team is None:
+            team = Team(tenant_id=agrayian.id, name="Enterprise Sales", team_type="sales")
+            db.add(team)
+            db.flush()
+        for member in (admin, seller, reader):
+            seated = db.scalar(
+                select(TeamMember).where(TeamMember.team_id == team.id, TeamMember.user_id == member.id)
+            )
+            if seated is None:
+                db.add(TeamMember(team_id=team.id, user_id=member.id))
         if db.scalar(select(Territory).where(Territory.tenant_id == agrayian.id)) is None:
             db.add(Territory(tenant_id=agrayian.id, name="India Enterprise", region="APAC"))
 

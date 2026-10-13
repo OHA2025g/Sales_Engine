@@ -356,6 +356,33 @@ def operator_daily_brief() -> int:
         db.close()
 
 
+@celery_app.task(name="finish_channel_search")
+def finish_channel_search_task(search_id: str, tenant_id: str) -> str:
+    from uuid import UUID
+
+    from app.db.session import get_engine, get_session
+    from app.db.tenant_context import set_tenant_context
+    from app.services.channel_search import finish_channel_search, mark_channel_search_failed
+
+    get_engine()
+    db = get_session()
+    parsed_search = UUID(search_id)
+    parsed_tenant = UUID(tenant_id)
+    try:
+        set_tenant_context(db, parsed_tenant)
+        finish_channel_search(db, parsed_search)
+        db.commit()
+        return search_id
+    except Exception:
+        db.rollback()
+        set_tenant_context(db, parsed_tenant)
+        mark_channel_search_failed(db, parsed_search)
+        db.commit()
+        raise
+    finally:
+        db.close()
+
+
 @celery_app.task(name="reconcile_requested_actions")
 def reconcile_requested_actions() -> int:
     from datetime import UTC, datetime, timedelta

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -114,6 +114,7 @@ export function Drawer({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const titleId = useId();
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -124,17 +125,20 @@ export function Drawer({
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50">
-      <button className="flex-1" onClick={onClose} aria-label="Close drawer" />
-      <aside className="glass-strong h-full w-full max-w-xl overflow-auto border-l p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-navy">{title}</h2>
-          <Button variant="ghost" onClick={onClose}>
+    <div className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <button type="button" className="modal-scrim" aria-label="Close" onClick={onClose} />
+      <div
+        className="modal-card"
+        style={{ maxHeight: "min(760px, calc(100vh - 48px))", overflow: "auto" }}
+      >
+        <header className="modal-head">
+          <h2 id={titleId}>{title}</h2>
+          <Button type="button" variant="ghost" onClick={onClose}>
             Close
           </Button>
-        </div>
-        {children}
-      </aside>
+        </header>
+        <div className="modal-body">{children}</div>
+      </div>
     </div>
   );
 }

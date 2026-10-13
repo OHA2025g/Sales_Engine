@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -113,6 +115,14 @@ def test_rate_limit_opens_circuit_for_cooldown(client: TestClient) -> None:
         )
         db.commit()
         assert is_circuit_open(db, tenant_id=user.tenant_id, provider="apify-limit")
+        later = datetime.now(UTC) + timedelta(hours=6)
+        assert is_circuit_open(db, tenant_id=user.tenant_id, provider="apify-limit", now=later)
+        assert not is_circuit_open(
+            db,
+            tenant_id=user.tenant_id,
+            provider="apify-limit",
+            now=later + timedelta(hours=7),
+        )
     finally:
         db.close()
 

@@ -1,11 +1,10 @@
 "use client";
 
-import { DataTable } from "@/components/data-table";
-import { Go, Notice } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
 import { PublishedPostLink } from "@/components/published-post-link";
 import { DeniedState, EmptyState, ErrorState, LoadingState } from "@/components/states";
-import { Badge, Button, Drawer, Field, FormActions, Input, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Field, FormActions, Input, Select, Textarea } from "@/components/ui";
+import { MetricStrip } from "@/components/workspace-ui";
 import { useAuth } from "@/lib/auth";
 import { labelize } from "@/lib/format";
 import { api } from "@agrayian/sdk";
@@ -54,6 +53,20 @@ type ProfileForm = Omit<Profile, "id">;
 type ProductForm = { sku: string; name: string; description: string };
 type GenerateForm = { product_id: string; ad_channel: string; brief: string };
 type DraftForm = { headline: string; body: string; cta: string; image_url: string };
+type StudioTab = "company" | "products" | "generate" | "drafts" | "edit" | "preview" | "publish" | "view";
+
+const STUDIO_TABS: { id: StudioTab; label: string }[] = [
+  { id: "company", label: "1 Company" },
+  { id: "products", label: "2 Products" },
+  { id: "generate", label: "3 Generate" },
+  { id: "drafts", label: "4 Drafts" },
+  { id: "edit", label: "5 Edit" },
+  { id: "preview", label: "6 Preview" },
+  { id: "publish", label: "7 Publish" },
+  { id: "view", label: "8 View post" },
+];
+
+const PREVIEW_ORDER = ["linkedin", "facebook", "instagram"];
 
 function tone(status: string): "ok" | "rose" | "gold" {
   if (status === "published" || status === "paused") return "ok";
@@ -61,9 +74,105 @@ function tone(status: string): "ok" | "rose" | "gold" {
   return "gold";
 }
 
+function canRevise(status: string) {
+  return status !== "published" && status !== "paused" && status !== "mock";
+}
+
+function channelName(channel: string): string {
+  if (channel === "linkedin") return "LinkedIn";
+  if (channel === "facebook") return "Facebook";
+  if (channel === "instagram") return "Instagram";
+  return labelize(channel);
+}
+
+function previewTitle(row: Draft): string {
+  const name = channelName(row.channel);
+  return row.kind === "ad" ? `${name} ad` : name;
+}
+
+function httpsUrl(url: string): string {
+  const value = url.trim();
+  return value.startsWith("https://") ? value : "";
+}
+
+function hostLabel(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function postedText(row: Draft): string {
+  return [row.headline, row.body, row.cta]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function draftsToPreview(rows: Draft[]): Draft[] {
+  return rows.slice().sort((left, right) => {
+    const leftAd = left.kind === "ad" ? 1 : 0;
+    const rightAd = right.kind === "ad" ? 1 : 0;
+    if (leftAd !== rightAd) return leftAd - rightAd;
+    const leftIndex = PREVIEW_ORDER.indexOf(left.channel);
+    const rightIndex = PREVIEW_ORDER.indexOf(right.channel);
+    return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+  });
+}
+
+function ChannelPreview({ row, company }: { row: Draft; company: string }) {
+  const image = httpsUrl(row.image_url);
+  const link = httpsUrl(row.destination_url);
+  const missingImage = row.channel === "instagram" && row.kind !== "ad" && !image;
+  const message = row.kind === "ad" ? row.body.trim() : postedText(row);
+  return (
+    <article className={`channel-preview channel-${row.channel}`}>
+      <header className="channel-preview-head">
+        <span>{previewTitle(row)}</span>
+        <Badge tone={tone(row.status)}>{labelize(row.status)}</Badge>
+      </header>
+      <div className="channel-preview-author">
+        <span className="channel-preview-mark" aria-hidden="true">
+          {(company || "C").slice(0, 1).toUpperCase()}
+        </span>
+        <div>
+          <strong>{company || "Your company"}</strong>
+          <p>{row.kind === "ad" ? "Sponsored" : "Organic post"}</p>
+        </div>
+      </div>
+      {image ? <img className="channel-preview-image" src={image} alt={row.headline || previewTitle(row)} /> : null}
+      {missingImage ? <p className="channel-preview-gap">Instagram needs a public image URL before this can be posted.</p> : null}
+      <div className="channel-preview-copy">
+        {row.kind === "ad" && row.headline ? <h3>{row.headline}</h3> : null}
+        {message ? <p>{message}</p> : <p className="channel-preview-gap">This draft has no text yet.</p>}
+        {row.kind === "ad" && row.cta ? <p className="channel-preview-cta">{row.cta}</p> : null}
+      </div>
+      {link ? (
+        <div className="channel-preview-link">
+          <span>{hostLabel(link)}</span>
+          <strong>{row.headline || link}</strong>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function groupDrafts(rows: Draft[]) {
+  const groups: { key: string; rows: Draft[] }[] = [];
+  for (const row of rows) {
+    const key = row.channel || row.kind || "draft";
+    const existing = groups.find((group) => group.key === key);
+    if (existing) existing.rows.push(row);
+    else groups.push({ key, rows: [row] });
+  }
+  return groups;
+}
+
 export default function ContentPage() {
   const { can } = useAuth();
   const client = useQueryClient();
+  const [tab, setTab] = useState<StudioTab>("company");
   const [editing, setEditing] = useState<Draft | null>(null);
   const profileForm = useForm<ProfileForm>({
     defaultValues: { company_name: "", summary: "", audience: "", website: "", proof: "", capture_url: "" },
@@ -103,6 +212,7 @@ export default function ContentPage() {
     mutationFn: (body: GenerateForm) => api<Draft[]>("/api/v1/content/generate", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
       generateForm.setValue("brief", "");
+      setTab("drafts");
       void client.invalidateQueries({ queryKey: ["content-drafts"] });
     },
   });
@@ -114,7 +224,6 @@ export default function ContentPage() {
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["content-drafts"] });
-      setEditing(null);
     },
   });
   const publish = useMutation({
@@ -140,205 +249,382 @@ export default function ContentPage() {
 
   const catalog = products.data ?? [];
   const rows = drafts.data ?? [];
+  const groups = groupDrafts(rows);
   const generated = generate.data?.data ?? [];
   const generationFailed = generate.isSuccess && generated.length > 0 && generated.every((row) => row.status === "failed");
+  const writable = can("campaigns.write");
+  const ready = rows.filter((row) => canRevise(row.status) && row.status !== "failed").length;
+  const published = rows.filter((row) => row.status === "published" || row.status === "paused").length;
+  const failed = rows.filter((row) => row.status === "failed").length;
+
+  const editable = rows.filter((row) => canRevise(row.status));
+  const previews = draftsToPreview(rows);
+  const companyName = saved?.company_name?.trim() || "";
+  const publishable = editable;
+  const viewable = rows.filter((row) => row.status === "published");
+
+  function openEditor(row: Draft) {
+    setEditing(row);
+    draftForm.reset({ headline: row.headline, body: row.body, cta: row.cta, image_url: row.image_url });
+    setTab("edit");
+  }
+
+  function panel(current: StudioTab) {
+    switch (current) {
+      case "company":
+        return (
+          <form className="panel" onSubmit={profileForm.handleSubmit((values) => saveProfile.mutate(values))}>
+            <header className="panel-head">
+              <h2>Company</h2>
+            </header>
+            <div className="panel-body">
+              <div className="content-form">
+                <Field label="Company name">
+                  <Input {...profileForm.register("company_name", { required: true })} />
+                </Field>
+                <Field label="Who you sell to">
+                  <Input {...profileForm.register("audience")} />
+                </Field>
+                <div className="span-2">
+                  <Field label="What you do">
+                    <Textarea rows={4} {...profileForm.register("summary", { required: true })} />
+                  </Field>
+                </div>
+                <div className="span-2">
+                  <Field label="Proof you are willing to claim">
+                    <Textarea rows={4} {...profileForm.register("proof")} />
+                  </Field>
+                </div>
+                <Field label="Website">
+                  <Input {...profileForm.register("website")} placeholder="https://" />
+                </Field>
+                <Field label="Lead capture link">
+                  <Input {...profileForm.register("capture_url")} placeholder="https://your-host/capture/…" />
+                </Field>
+              </div>
+              {saveProfile.isSuccess ? <p className="mt-3 text-sm text-emerald-700">Company saved.</p> : null}
+              <div className="sticky-action">
+                <Button type="submit" disabled={saveProfile.isPending || !writable}>
+                  {saveProfile.isPending ? "Saving…" : "Save company"}
+                </Button>
+              </div>
+            </div>
+          </form>
+        );
+      case "products":
+        return (
+          <section className="panel">
+            <header className="panel-head">
+              <h2>Products</h2>
+            </header>
+            {catalog.length === 0 ? (
+              <p className="px-5 pt-4 text-sm text-[var(--muted)]">No products yet. Add one before generating drafts.</p>
+            ) : (
+              <ul>
+                {catalog.map((row) => (
+                  <li className="row" key={row.id}>
+                    <div className="main">
+                      <h3>{row.name}</h3>
+                      <p className="connection-note">
+                        {row.sku}
+                        {row.kind ? ` · ${labelize(row.kind)}` : ""}
+                        {row.list_price ? ` · ${row.list_price} ${row.currency}` : ""}
+                      </p>
+                      {row.description ? <p className="connection-note">{row.description}</p> : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form className="panel-body" onSubmit={productForm.handleSubmit((values) => addProduct.mutate(values))}>
+              <div className="content-form">
+                <Field label="SKU">
+                  <Input {...productForm.register("sku", { required: true })} />
+                </Field>
+                <Field label="Product name">
+                  <Input {...productForm.register("name", { required: true })} />
+                </Field>
+                <div className="span-2">
+                  <Field label="Product description">
+                    <Textarea rows={3} {...productForm.register("description", { required: true })} />
+                  </Field>
+                </div>
+              </div>
+              {addProduct.isSuccess ? <p className="mt-3 text-sm text-emerald-700">Product saved.</p> : null}
+              <div className="sticky-action">
+                <Button type="submit" disabled={addProduct.isPending || !writable}>
+                  {addProduct.isPending ? "Saving…" : "Add product"}
+                </Button>
+              </div>
+            </form>
+          </section>
+        );
+      case "generate":
+        return (
+          <form className="panel" onSubmit={generateForm.handleSubmit((values) => generate.mutate(values))}>
+            <header className="panel-head">
+              <h2>Generate drafts</h2>
+            </header>
+            <div className="panel-body">
+              <div className="content-form">
+                <Field label="Product">
+                  <Select {...generateForm.register("product_id", { required: true })}>
+                    <option value="">Select</option>
+                    {catalog.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Ad network">
+                  <Select {...generateForm.register("ad_channel")}>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="instagram">Meta</option>
+                  </Select>
+                </Field>
+                <div className="span-2">
+                  <Field label="What should this say? Optional">
+                    <Textarea
+                      rows={3}
+                      {...generateForm.register("brief")}
+                      placeholder="Leave this empty and Gemini chooses the angle from the company and product."
+                    />
+                  </Field>
+                </div>
+              </div>
+              {generationFailed ? (
+                <p className="mt-3 text-sm text-red-700">{generated[0]?.error || "Drafts were not written. Nothing was published."}</p>
+              ) : generate.isSuccess ? (
+                <p className="mt-3 text-sm text-emerald-700">Drafts are ready to review. Nothing was published.</p>
+              ) : null}
+              {generate.isError ? <p className="mt-3 text-sm text-red-700">Drafts were not created. Save the company and a product description first.</p> : null}
+              <div className="sticky-action">
+                <Button type="submit" disabled={generate.isPending || !writable || catalog.length === 0}>
+                  {generate.isPending ? "Drafting…" : "Generate drafts"}
+                </Button>
+              </div>
+            </div>
+          </form>
+        );
+      case "drafts":
+        return (
+          <section className="panel">
+            <header className="panel-head">
+              <h2>Drafts</h2>
+            </header>
+            {rows.length === 0 ? (
+              <EmptyState title="No drafts" body="Save the company and a product, then generate. Drafts stay here until you publish one." />
+            ) : (
+              groups.map((group) => (
+                <div key={group.key}>
+                  <p className="px-5 pt-4 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{labelize(group.key)}</p>
+                  <ul>
+                    {group.rows.map((row) => (
+                      <li className="row" key={row.id}>
+                        <Link className="main" href={`/content/${row.id}`}>
+                          <h3>{row.headline || "Untitled asset"}</h3>
+                          <p className="connection-note">
+                            {labelize(row.kind)}
+                            {row.brief ? ` · ${row.brief}` : row.cta ? ` · ${row.cta}` : ""}
+                          </p>
+                          {row.error ? <p className="connection-note connection-error">{row.error}</p> : null}
+                        </Link>
+                        <div className="row-actions">
+                          <Badge tone={tone(row.status)}>{labelize(row.status)}</Badge>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
+          </section>
+        );
+      case "edit":
+        return (
+          <section className="panel">
+            <header className="panel-head">
+              <h2>Edit</h2>
+            </header>
+            {editable.length === 0 ? (
+              <EmptyState title="Nothing to edit" body="Generate a draft first. Published posts stay as they were sent." />
+            ) : (
+              <ul>
+                {editable.map((row) => (
+                  <li className="row" key={row.id}>
+                    <div className="main">
+                      <h3>{row.headline || "Untitled asset"}</h3>
+                      <p className="connection-note">
+                        {labelize(row.channel)} · {labelize(row.kind)}
+                        {row.cta ? ` · ${row.cta}` : ""}
+                      </p>
+                    </div>
+                    <div className="row-actions">
+                      <Badge tone={tone(row.status)}>{labelize(row.status)}</Badge>
+                      {writable ? (
+                        <Button type="button" variant="ghost" onClick={() => openEditor(row)}>
+                          Edit
+                        </Button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {editing && writable ? (
+              <form
+                className="panel-body space-y-4"
+                onSubmit={draftForm.handleSubmit((values) => {
+                  saveDraft.mutate({ ...values, id: editing.id });
+                })}
+              >
+                <Field label="Headline">
+                  <Input {...draftForm.register("headline")} />
+                </Field>
+                <Field label="Body">
+                  <Textarea rows={6} {...draftForm.register("body", { required: true })} />
+                </Field>
+                <Field label="Call to action">
+                  <Input {...draftForm.register("cta")} />
+                </Field>
+                <Field label="Image URL">
+                  <Input {...draftForm.register("image_url")} placeholder="Required for Instagram" />
+                </Field>
+                {saveDraft.isSuccess ? <p className="text-sm text-emerald-700">Draft saved. Nothing was published.</p> : null}
+                <FormActions pending={saveDraft.isPending} onCancel={() => setEditing(null)} />
+              </form>
+            ) : null}
+          </section>
+        );
+      case "preview":
+        return (
+          <section className="panel">
+            <header className="panel-head">
+              <h2>Preview</h2>
+            </header>
+            {previews.length === 0 ? (
+              <EmptyState title="Nothing to preview" body="Generate drafts first. Each channel appears here before anything is published." />
+            ) : (
+              <>
+                <p className="px-5 pt-4 text-sm text-[var(--muted)]">This is the post each channel will carry. Nothing is sent from this step.</p>
+                <div className="preview-grid">
+                  {previews.map((row) => (
+                    <ChannelPreview key={row.id} row={row} company={companyName} />
+                  ))}
+                </div>
+                <div className="preview-next">
+                  <Button type="button" onClick={() => setTab("publish")}>
+                    Continue to publish
+                  </Button>
+                </div>
+              </>
+            )}
+          </section>
+        );
+      case "publish":
+        return (
+          <section className="panel">
+            <header className="panel-head">
+              <h2>Publish</h2>
+            </header>
+            {publishable.length === 0 ? (
+              <EmptyState title="Nothing to publish" body="Drafts that are still in review appear here. A published draft is not sent again." />
+            ) : (
+              <ul>
+                {publishable.map((row) => (
+                  <li className="row" key={row.id}>
+                    <div className="main">
+                      <h3>{row.headline || "Untitled asset"}</h3>
+                      <p className="connection-note">
+                        {labelize(row.channel)} · {labelize(row.kind)}
+                      </p>
+                      {row.error ? <p className="connection-note connection-error">{row.error}</p> : null}
+                    </div>
+                    <div className="row-actions">
+                      <Badge tone={tone(row.status)}>{labelize(row.status)}</Badge>
+                      {writable ? (
+                        <Button type="button" onClick={() => publish.mutate(row.id)} disabled={publish.isPending || (row.status === "failed" && !row.body)}>
+                          Publish
+                        </Button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      case "view":
+        return (
+          <section className="panel">
+            <header className="panel-head">
+              <h2>View post</h2>
+            </header>
+            {viewable.length === 0 ? (
+              <EmptyState title="No live post" body="Publish a draft first. The live link opens here after Facebook, Instagram, or LinkedIn accepts it." />
+            ) : (
+              <ul>
+                {viewable.map((row) => (
+                  <li className="row" key={row.id}>
+                    <div className="main">
+                      <h3>{row.headline || "Untitled asset"}</h3>
+                      <p className="connection-note">
+                        {labelize(row.channel)} · {labelize(row.kind)}
+                      </p>
+                    </div>
+                    <div className="row-actions">
+                      <PublishedPostLink href={row.permalink} status={row.status} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      default: {
+        const exhaustive: never = current;
+        return exhaustive;
+      }
+    }
+  }
 
   return (
     <div>
       <PageHeader
         eyebrow="Create"
         title="Content"
-        subtitle="Gemini writes the full post and ad from your company and product. A short note is optional. It reads what was already sent so the next draft is different. Nothing goes out until you publish it."
+        subtitle="Work the tabs in order. Gemini writes the posts and the ad from your company and product. Nothing goes out until you publish it."
       />
-      <Notice
-        title="Grounded content, connected to a campaign"
-        body="Every asset retains its brief, approved claims, version, reviewer, and distribution result."
-      />
-      <div className="ds-grid three">
-        {rows.length === 0 ? (
-          <div className="panel empty">
-            <h3>No assets yet</h3>
-            <p>Generate a draft from the company profile. Nothing is published until you send it.</p>
-          </div>
-        ) : (
-          rows.map((row) => (
-            <section className="panel workspace-card" key={row.id}>
-              <div className="between">
-                <span className="upper">{labelize(row.channel || row.kind)}</span>
-                <Badge tone={tone(row.status)}>{labelize(row.status)}</Badge>
-              </div>
-              <h2>{row.headline || "Untitled asset"}</h2>
-              <p>{row.brief || row.cta || "No brief recorded"}</p>
-              <div className="ds-flex">
-                <Go href={`/content/${row.id}`}>Open editor</Go>
-                <Go href="/campaigns">View campaign</Go>
-                <PublishedPostLink href={row.permalink} status={row.status} />
-              </div>
-            </section>
-          ))
-        )}
-      </div>
-      <form
-        className="panel mb-6 grid gap-4 p-4 md:grid-cols-2"
-        onSubmit={profileForm.handleSubmit((values) => saveProfile.mutate(values))}
-      >
-        <Field label="Company name">
-          <Input {...profileForm.register("company_name", { required: true })} />
-        </Field>
-        <Field label="Who you sell to">
-          <Input {...profileForm.register("audience")} />
-        </Field>
-        <Field label="What you do">
-          <Textarea rows={4} {...profileForm.register("summary", { required: true })} />
-        </Field>
-        <Field label="Proof you are willing to claim">
-          <Textarea rows={4} {...profileForm.register("proof")} />
-        </Field>
-        <Field label="Website">
-          <Input {...profileForm.register("website")} placeholder="https://" />
-        </Field>
-        <Field label="Lead capture link">
-          <Input {...profileForm.register("capture_url")} placeholder="https://your-host/capture/…" />
-        </Field>
-        <div className="md:col-span-2 flex items-center gap-3">
-          <Button type="submit" disabled={saveProfile.isPending || !can("campaigns.write")}>
-            {saveProfile.isPending ? "Saving…" : "Save company"}
-          </Button>
-          {saveProfile.isSuccess ? <p className="text-sm text-emerald-700">Company saved.</p> : null}
-        </div>
-      </form>
-
-      <form className="panel mb-6 grid gap-4 p-4 md:grid-cols-3" onSubmit={productForm.handleSubmit((values) => addProduct.mutate(values))}>
-        <Field label="SKU">
-          <Input {...productForm.register("sku", { required: true })} />
-        </Field>
-        <Field label="Product name">
-          <Input {...productForm.register("name", { required: true })} />
-        </Field>
-        <Field label="Product description">
-          <Textarea rows={3} {...productForm.register("description", { required: true })} />
-        </Field>
-        <div className="md:col-span-3 flex items-center gap-3">
-          <Button type="submit" disabled={addProduct.isPending || !can("campaigns.write")}>
-            {addProduct.isPending ? "Saving…" : "Add product"}
-          </Button>
-          {addProduct.isSuccess ? <p className="text-sm text-emerald-700">Product saved.</p> : null}
-        </div>
-      </form>
-
-      <form
-        className="panel mb-6 grid gap-4 p-4"
-        onSubmit={generateForm.handleSubmit((values) => generate.mutate(values))}
-      >
-        <div className="flex flex-wrap items-end gap-4">
-          <Field label="Product">
-            <Select {...generateForm.register("product_id", { required: true })}>
-              <option value="">Select</option>
-              {catalog.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Ad network">
-            <Select {...generateForm.register("ad_channel")}>
-              <option value="linkedin">LinkedIn</option>
-              <option value="instagram">Meta</option>
-            </Select>
-          </Field>
-        </div>
-        <Field label="What should this say? Optional">
-          <Textarea
-            rows={3}
-            {...generateForm.register("brief")}
-            placeholder="Leave this empty and Gemini chooses the angle from the company and product."
-          />
-        </Field>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={generate.isPending || !can("campaigns.write") || catalog.length === 0}>
-            {generate.isPending ? "Drafting…" : "Generate drafts"}
-          </Button>
-          {generationFailed ? (
-            <p className="text-sm text-red-700">{generated[0]?.error || "Drafts were not written. Nothing was published."}</p>
-          ) : generate.isSuccess ? (
-            <p className="text-sm text-emerald-700">Drafts are ready to review. Nothing was published.</p>
-          ) : null}
-          {generate.isError ? <p className="text-sm text-red-700">Drafts were not created. Save the company and a product description first.</p> : null}
-        </div>
-      </form>
-
-      {rows.length === 0 ? (
-        <EmptyState title="No drafts" body="Save your company and a product, then generate. A note is optional. Drafts stay here until you publish one." />
-      ) : (
-        <DataTable
-          rows={rows}
-          columns={[
-            { key: "channel", header: "Channel", cell: (row) => `${labelize(row.channel)} ${labelize(row.kind)}` },
-            {
-              key: "headline",
-              header: "Headline",
-              cell: (row) => <Link href={`/content/${row.id}`}>{row.headline || row.body || row.brief}</Link>,
-            },
-            {
-              key: "status",
-              header: "Status",
-              cell: (row) => <Badge tone={tone(row.status)}>{labelize(row.status)}</Badge>,
-            },
-            { key: "error", header: "Detail", cell: (row) => row.error || "—" },
-            {
-              key: "id",
-              header: "",
-              cell: (row) => (
-                <span className="flex flex-wrap gap-2">
-                  <PublishedPostLink href={row.permalink} status={row.status} />
-                  {can("campaigns.write") && row.status !== "published" && row.status !== "paused" && row.status !== "mock" ? (
-                    <>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => {
-                          setEditing(row);
-                          draftForm.reset({ headline: row.headline, body: row.body, cta: row.cta, image_url: row.image_url });
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <Button type="button" onClick={() => publish.mutate(row.id)} disabled={publish.isPending || (row.status === "failed" && !row.body)}>
-                        Publish
-                      </Button>
-                    </>
-                  ) : null}
-                </span>
-              ),
-            },
+      <div className="stack">
+        <MetricStrip
+          items={[
+            { label: "Ready to review", value: String(ready) },
+            { label: "Published", value: String(published) },
+            { label: "Failed", value: String(failed) },
+            { label: "Products", value: String(catalog.length) },
           ]}
         />
-      )}
-
-      <Drawer open={editing !== null} title="Edit draft" onClose={() => setEditing(null)}>
-        <form
-          onSubmit={draftForm.handleSubmit((values) => {
-            if (!editing) return;
-            saveDraft.mutate({ ...values, id: editing.id });
-          })}
-          className="space-y-4"
-        >
-          <Field label="Headline">
-            <Input {...draftForm.register("headline")} />
-          </Field>
-          <Field label="Body">
-            <Textarea rows={6} {...draftForm.register("body", { required: true })} />
-          </Field>
-          <Field label="Call to action">
-            <Input {...draftForm.register("cta")} />
-          </Field>
-          <Field label="Image URL">
-            <Input {...draftForm.register("image_url")} placeholder="Required for Instagram" />
-          </Field>
-          <FormActions pending={saveDraft.isPending} onCancel={() => setEditing(null)} />
-        </form>
-      </Drawer>
+        <div className="studio-tabs" role="tablist" aria-label="Content studio">
+          {STUDIO_TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              id={`studio-tab-${item.id}`}
+              aria-selected={tab === item.id}
+              aria-controls={`studio-panel-${item.id}`}
+              tabIndex={tab === item.id ? 0 : -1}
+              onClick={() => setTab(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div role="tabpanel" id={`studio-panel-${tab}`} aria-labelledby={`studio-tab-${tab}`}>
+          {panel(tab)}
+        </div>
+      </div>
     </div>
   );
 }

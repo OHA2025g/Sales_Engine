@@ -394,8 +394,11 @@ def run_autonomous_cycle(
     )
     run.status = "completed"
     run.finished_at = datetime.now(UTC)
+    discovered = f"Discovered {discovery['created']}."
+    if discovery["created"] == 0 and discovery.get("reason"):
+        discovered = f"Discovered 0. {discovery['reason']}"
     run.summary = (
-        f"Discovered {discovery['created']}. Rescored {scored}. "
+        f"{discovered} Rescored {scored}. "
         f"Processed {processed} events. Queued {due.get('queued', 0)} due sends and {queued_ads} ad launches."
     )
     write_audit(

@@ -102,6 +102,19 @@ class LeadOut(LeadIn):
     created_at: datetime
     retrieved_at: datetime | None = None
     latest_score: LeadScoreOut | None = None
+    owner_id: UUID | None = None
+    owner_name: str = ""
+
+
+class LeadAssigneeOut(APIModel):
+    id: UUID
+    name: str
+    email: str
+    team_name: str = ""
+
+
+class LeadAssign(APIModel):
+    owner_id: UUID | None = None
 
 
 class OpportunityIn(APIModel):
@@ -203,6 +216,7 @@ class NBAOut(APIModel):
     confidence: int
     expected_impact: str
     status: str
+    steps: list[str] = []
 
 
 class KPIOut(APIModel):

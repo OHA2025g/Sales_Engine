@@ -16,6 +16,7 @@ from app.services.audit import write_audit
 from app.services.public_forms import hash_form_token
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_VIDEO_BYTES = 24 * 1024 * 1024
 _PNG = b"\x89PNG\r\n\x1a\n"
 _JPEG = b"\xff\xd8\xff"
 
@@ -34,6 +35,26 @@ def store_social_image(db: Session, *, tenant_id: UUID, actor_id: UUID, data: by
     kind = image_kind(data)
     if kind is None:
         raise HTTPException(status_code=422, detail="Upload a JPEG or PNG.")
+    return _store_media(db, tenant_id=tenant_id, actor_id=actor_id, data=data, kind=kind)
+
+
+def store_social_gif(db: Session, *, tenant_id: UUID, actor_id: UUID, data: bytes) -> str:
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="The clip must be 8 MB or smaller.")
+    if not data.startswith(b"GIF8"):
+        raise HTTPException(status_code=422, detail="The clip was not a GIF.")
+    return _store_media(db, tenant_id=tenant_id, actor_id=actor_id, data=data, kind="image/gif")
+
+
+def store_social_video(db: Session, *, tenant_id: UUID, actor_id: UUID, data: bytes) -> str:
+    if len(data) > MAX_VIDEO_BYTES:
+        raise HTTPException(status_code=413, detail="Video must be 24 MB or smaller.")
+    if b"ftyp" not in data[:32]:
+        raise HTTPException(status_code=422, detail="The video file was not a playable MP4.")
+    return _store_media(db, tenant_id=tenant_id, actor_id=actor_id, data=data, kind="video/mp4")
+
+
+def _store_media(db: Session, *, tenant_id: UUID, actor_id: UUID, data: bytes, kind: str) -> str:
     image_id = uuid4()
     key = f"tenant/{tenant_id}/social/{image_id}"
     get_object_storage().put(key, data, content_type=kind)

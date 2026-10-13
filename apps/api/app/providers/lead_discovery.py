@@ -1,5 +1,7 @@
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
@@ -298,6 +300,18 @@ class ApifyLeadDiscoveryProvider:
         owns_client = self._client is None
         client = self._http()
         try:
+            if "profile-search" in actor and not urls and not _search_filters(self._actor_input(query)):
+                return DiscoveryResult(
+                    candidates=[],
+                    provider="apify",
+                    is_mock=False,
+                    connected=False,
+                    reason=(
+                        "Discovery needs an ICP with a title, location, industry, or keyword. "
+                        "No Apify run was started."
+                    ),
+                    failure_class="CONFIGURATION",
+                )
             start = client.post(
                 f"https://api.apify.com/v2/acts/{self._actor_id}/runs",
                 headers=self._headers(),
@@ -472,6 +486,193 @@ def map_dataset_items(rows: list[Any]) -> list[DiscoveredLead]:
             )
         )
     return mapped
+
+
+def _search_filters(payload: dict[str, Any]) -> bool:
+    return any(payload.get(key) for key in ("searchQuery", "currentJobTitles", "locations", "currentCompanies", "industryIds", "queries"))
+
+
+def people_search_text(query: DiscoveryQuery) -> str:
+    titles = " OR ".join(query.job_titles[:3])
+    places = " ".join(query.location_names[:2])
+    extra = query.keywords.strip() or query.search_query.strip() or query.industries.strip()
+    core = " ".join(part for part in (titles, places, extra) if part).strip()
+    if not core:
+        return ""
+    return f"{core} site:linkedin.com/in"
+
+
+def _plain(value: str) -> str:
+    return "".join(char for char in value if unicodedata.category(char) != "Cf").strip()
+
+
+def profile_from_public_result(title: str, url: str) -> DiscoveredLead | None:
+    parsed = urlparse(url.strip())
+    host = (parsed.hostname or "").lower()
+    if "linkedin.com" not in host or "/in/" not in (parsed.path or "").lower():
+        return None
+    headline = _plain(title).split("|", 1)[0].strip()
+    parts = [part.strip(" -–—") for part in headline.replace(" – ", " - ").replace(" — ", " - ").split(" - ")]
+    parts = [part for part in parts if part and part.lower() != "linkedin"]
+    if not parts:
+        return None
+    name_parts = [part for part in parts[0].split() if part]
+    if len(name_parts) < 2 or any(char.isdigit() for char in parts[0]):
+        return None
+    role = _plain(parts[1]) if len(parts) > 1 else ""
+    company = _plain(parts[2]) if len(parts) > 2 else ""
+    return DiscoveredLead(
+        first_name=name_parts[0][:80],
+        last_name=name_parts[-1][:80],
+        email="",
+        title=role[:120],
+        company_name=company[:200],
+        linkedin_url=url.strip()[:255],
+        provider_ref=parsed.path.strip("/")[:200],
+        confidence=55,
+        source_url=url.strip()[:255],
+    )
+
+
+def leads_from_public_items(rows: list[Any]) -> list[DiscoveredLead]:
+    found: list[DiscoveredLead] = []
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        organic = row.get("organicResults") or row.get("organic_results")
+        candidates = organic if isinstance(organic, list) else [row]
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "")
+            url = str(item.get("url") or item.get("link") or "")
+            lead = profile_from_public_result(title, url)
+            if lead is None or lead.linkedin_url in seen:
+                continue
+            seen.add(lead.linkedin_url)
+            found.append(lead)
+            if len(found) == 10:
+                return found
+    return found
+
+
+def search_public_profiles(
+    query: DiscoveryQuery,
+    *,
+    token: str,
+    actor_id: str,
+    client: httpx.Client | None = None,
+) -> DiscoveryResult:
+    text = people_search_text(query)
+    if not text or not token.strip() or not actor_id.strip():
+        return DiscoveryResult(
+            candidates=[],
+            provider="public-search",
+            is_mock=False,
+            connected=False,
+            reason="Public profile search is not configured.",
+            failure_class="CONFIGURATION",
+        )
+    owns_client = client is None
+    http = client or httpx.Client(timeout=90.0)
+    actor = normalize_actor_id(actor_id)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    try:
+        start = http.post(
+            f"https://api.apify.com/v2/acts/{actor}/runs",
+            headers=headers,
+            json={"queries": text, "maxPagesPerQuery": 1, "saveHtml": False, "saveHtmlToKeyValueStore": False},
+            params={"waitForFinish": 60},
+        )
+        if start.status_code >= 400:
+            return DiscoveryResult(
+                candidates=[],
+                provider="public-search",
+                is_mock=False,
+                connected=False,
+                reason=f"Public profile search refused ({start.status_code}).",
+                failure_class=classify_http(start.status_code) or "TRANSIENT",
+                status_code=start.status_code,
+            )
+        body = start.json().get("data") or {}
+        dataset_id = body.get("defaultDatasetId")
+        status = body.get("status")
+        if status not in {"SUCCEEDED", "READY"} or not dataset_id:
+            wait = http.get(
+                f"https://api.apify.com/v2/actor-runs/{body.get('id')}",
+                headers=headers,
+                params={"waitForFinish": 60},
+            )
+            if wait.status_code >= 400:
+                return DiscoveryResult(
+                    candidates=[],
+                    provider="public-search",
+                    is_mock=False,
+                    connected=False,
+                    reason="Public profile search did not finish.",
+                    failure_class=classify_http(wait.status_code) or "TRANSIENT",
+                    status_code=wait.status_code,
+                )
+            waited = wait.json().get("data") or {}
+            dataset_id = waited.get("defaultDatasetId")
+            status = waited.get("status")
+        if status != "SUCCEEDED" or not dataset_id:
+            return DiscoveryResult(
+                candidates=[],
+                provider="public-search",
+                is_mock=False,
+                connected=False,
+                reason=f"Public profile search ended {status or 'unknown'}.",
+                failure_class="TRANSIENT",
+            )
+        items = http.get(
+            f"https://api.apify.com/v2/datasets/{dataset_id}/items",
+            headers=headers,
+            params={"limit": 20},
+        )
+        if items.status_code >= 400:
+            return DiscoveryResult(
+                candidates=[],
+                provider="public-search",
+                is_mock=False,
+                connected=False,
+                reason="Public profile results could not be read.",
+                failure_class=classify_http(items.status_code) or "TRANSIENT",
+                status_code=items.status_code,
+            )
+        rows = items.json()
+        mapped = leads_from_public_items(rows if isinstance(rows, list) else [])
+        if mapped:
+            return DiscoveryResult(candidates=mapped, provider="public-search", is_mock=False, connected=True)
+        return DiscoveryResult(
+            candidates=[],
+            provider="public-search",
+            is_mock=False,
+            connected=True,
+            reason="Public search returned no LinkedIn profiles.",
+        )
+    except httpx.TimeoutException:
+        return DiscoveryResult(
+            candidates=[],
+            provider="public-search",
+            is_mock=False,
+            connected=False,
+            reason="Public profile search timed out.",
+            failure_class="TRANSIENT",
+        )
+    except httpx.HTTPError:
+        return DiscoveryResult(
+            candidates=[],
+            provider="public-search",
+            is_mock=False,
+            connected=False,
+            reason="Public profile search could not be reached.",
+            failure_class="TRANSIENT",
+        )
+    finally:
+        if owns_client:
+            http.close()
 
 
 def get_lead_discovery_provider(db: Session | None = None, tenant_id: UUID | None = None) -> LeadDiscoveryProvider:

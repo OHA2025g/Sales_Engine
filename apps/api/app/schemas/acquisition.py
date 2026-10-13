@@ -72,16 +72,32 @@ class DedupeDecision(APIModel):
     decision: str
 
 
+class PublicFormField(APIModel):
+    key: str
+    label: str
+    type: str
+    required: bool = False
+    placeholder: str = ""
+    options: list[str] = []
+
+
 class PublicFormOut(APIModel):
     id: UUID
     name: str
     status: str
     url: str = ""
     last_used_at: datetime | None = None
+    fields: list[PublicFormField] = []
 
 
 class PublicFormIn(APIModel):
     name: str = ""
+    fields: list[PublicFormField] = []
+
+
+class PublicFormPatch(APIModel):
+    name: str
+    fields: list[PublicFormField]
 
 
 class AcquisitionOverview(APIModel):

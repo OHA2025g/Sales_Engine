@@ -10,6 +10,7 @@ from app.providers.channel_search import (
     CHANNELS,
     NO_MATCH_REASON,
     NOT_CONFIGURED_DETAIL,
+    ApifyChannelSearch,
     ChannelHit,
     ChannelSearchOutcome,
     get_channel_search_provider,
@@ -35,29 +36,118 @@ def channel_search_status() -> dict[str, str | bool]:
     return {"provider": kind, "configured": kind != "not_configured", "detail": detail}
 
 
-def run_channel_search(db: Session, *, tenant_id: UUID, actor_id: UUID, query: str) -> ChannelSearch:
-    outcome = get_channel_search_provider().search(query)
-    outcome = ChannelSearchOutcome(
-        provider=outcome.provider,
-        channels=normalize_channels(outcome.channels, provider=outcome.provider),
+def _channel_snapshot(channels: list) -> str:
+    return json.dumps(
+        [
+            {"channel": channel.channel, "mode": channel.mode, "provider": channel.provider, "reason": channel.reason}
+            for channel in channels
+        ]
     )
-    status = overall_status(outcome.channels)
+
+
+def _placeholder_channels(mode: str, reason: str) -> str:
+    return json.dumps(
+        [{"channel": name, "mode": mode, "provider": "", "reason": reason} for name in CHANNELS]
+    )
+
+
+def begin_channel_search(db: Session, *, tenant_id: UUID, actor_id: UUID, query: str) -> ChannelSearch:
     row = ChannelSearch(
         tenant_id=tenant_id,
         created_by=actor_id,
         updated_by=actor_id,
         query=query,
-        status=status,
-        provider=outcome.provider,
-        channels_json=json.dumps(
-            [
-                {"channel": channel.channel, "mode": channel.mode, "provider": channel.provider, "reason": channel.reason}
-                for channel in outcome.channels
-            ]
-        ),
+        status="running",
+        provider="",
+        channels_json=_placeholder_channels("running", "Searching this channel."),
     )
     db.add(row)
     db.flush()
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="channel_search.create",
+        entity_type="channel_search",
+        entity_id=str(row.id),
+        after={"query": query, "status": "running"},
+    )
+    return row
+
+
+def finish_channel_search(db: Session, search_id: UUID) -> ChannelSearch | None:
+    row = db.get(ChannelSearch, search_id)
+    if row is None or row.deleted_at is not None or row.status != "running":
+        return row
+    query = row.query
+    tenant_id = row.tenant_id
+    actor_id = row.created_by
+    db.commit()
+    provider = get_channel_search_provider()
+
+    def publish(outcome: ChannelSearchOutcome) -> None:
+        current = db.get(ChannelSearch, search_id)
+        if current is None or current.deleted_at is not None or current.status != "running":
+            return
+        _publish_progress(db, current, outcome, tenant_id=tenant_id, actor_id=actor_id)
+        db.commit()
+
+    if isinstance(provider, ApifyChannelSearch):
+        outcome = provider.search(query, on_progress=publish)
+    else:
+        outcome = provider.search(query)
+    row = db.get(ChannelSearch, search_id)
+    if row is None or row.deleted_at is not None or row.status != "running":
+        return row
+    _replace_hits(db, row, outcome, tenant_id=tenant_id, actor_id=actor_id, query=query)
+    return row
+
+
+def mark_channel_search_failed(db: Session, search_id: UUID) -> None:
+    row = db.get(ChannelSearch, search_id)
+    if row is None or row.deleted_at is not None or row.status != "running":
+        return
+    row.status = "failed"
+    row.channels_json = _placeholder_channels("failed", "The search was interrupted before results were saved.")
+
+
+def run_channel_search(db: Session, *, tenant_id: UUID, actor_id: UUID, query: str) -> ChannelSearch:
+    row = ChannelSearch(
+        tenant_id=tenant_id,
+        created_by=actor_id,
+        updated_by=actor_id,
+        query=query,
+        status="running",
+        provider="",
+        channels_json=_placeholder_channels("running", "Searching this channel."),
+    )
+    db.add(row)
+    db.flush()
+    outcome = get_channel_search_provider().search(query)
+    _replace_hits(db, row, outcome, tenant_id=tenant_id, actor_id=actor_id, query=query)
+    return row
+
+
+def _replace_hits(
+    db: Session,
+    row: ChannelSearch,
+    outcome: ChannelSearchOutcome,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID | None,
+    query: str,
+) -> None:
+    outcome = ChannelSearchOutcome(
+        provider=outcome.provider,
+        channels=normalize_channels(outcome.channels, provider=outcome.provider),
+    )
+    status = overall_status(outcome.channels)
+    row.status = status
+    row.provider = outcome.provider
+    row.updated_by = actor_id
+    row.channels_json = _channel_snapshot(outcome.channels)
+    for existing in hits_for_search(db, tenant_id, row.id):
+        db.delete(existing)
     hit_count = 0
     for channel in outcome.channels:
         for hit in channel.hits:
@@ -84,7 +174,39 @@ def run_channel_search(db: Session, *, tenant_id: UUID, actor_id: UUID, query: s
         entity_id=str(row.id),
         after={"query": query, "provider": outcome.provider, "status": status, "hit_count": hit_count},
     )
-    return row
+
+
+def _publish_progress(
+    db: Session,
+    row: ChannelSearch,
+    outcome: ChannelSearchOutcome,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID | None,
+) -> None:
+    row.status = "running"
+    row.provider = outcome.provider
+    row.updated_by = actor_id
+    row.channels_json = _channel_snapshot(outcome.channels)
+    for existing in hits_for_search(db, tenant_id, row.id):
+        db.delete(existing)
+    for channel in outcome.channels:
+        if channel.mode != "live":
+            continue
+        for hit in channel.hits:
+            db.add(
+                ChannelSearchHit(
+                    tenant_id=tenant_id,
+                    created_by=actor_id,
+                    updated_by=actor_id,
+                    search_id=row.id,
+                    channel=channel.channel,
+                    rank=hit.rank,
+                    title=hit.title,
+                    url=hit.url,
+                    snippet=hit.snippet,
+                )
+            )
 
 
 def hits_for_search(db: Session, tenant_id: UUID, search_id: UUID) -> list[ChannelSearchHit]:

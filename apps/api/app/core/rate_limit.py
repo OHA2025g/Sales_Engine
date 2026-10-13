@@ -12,6 +12,8 @@ from app.core.config import get_settings
 
 _memory: dict[str, deque[float]] = defaultdict(deque)
 _lock = Lock()
+_redis_down_until = 0.0
+_REDIS_BACKOFF_SECONDS = 30.0
 
 
 def _prune(bucket: deque[float], window: float, now: float) -> None:
@@ -31,17 +33,22 @@ def _allow_memory(key: str, limit: int, window: float) -> bool:
 
 
 def _allow_redis(key: str, limit: int, window: int) -> bool | None:
+    global _redis_down_until
+    now = time.monotonic()
+    if now < _redis_down_until:
+        return None
     settings = get_settings()
     try:
         import redis
 
-        client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=0.4, socket_timeout=0.4)
+        client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=0.05, socket_timeout=0.05)
         pipe = client.pipeline()
         pipe.incr(key)
         pipe.expire(key, window, nx=True)
         count, _ = pipe.execute()
         return int(count) <= limit
     except Exception:  # noqa: BLE001 — fall back to memory
+        _redis_down_until = time.monotonic() + _REDIS_BACKOFF_SECONDS
         return None
 
 

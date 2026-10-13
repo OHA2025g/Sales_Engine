@@ -156,6 +156,12 @@ def _whatsapp(db: Session, *, tenant_id: UUID, actor_id: UUID, row: AIApproval, 
     return execute_whatsapp_send(db, tenant_id=tenant_id, actor_id=actor_id, approval=row)
 
 
+def _social_publish(db: Session, *, tenant_id: UUID, actor_id: UUID, row: AIApproval, payload_patch: dict | None = None) -> str:
+    from app.services.social import publish_approved_posts
+
+    return publish_approved_posts(db, tenant_id=tenant_id, actor_id=actor_id, approval=row, payload_patch=payload_patch)
+
+
 def _mapping_confirm(db: Session, *, tenant_id: UUID, actor_id: UUID, row: AIApproval, payload_patch: dict | None = None) -> str:
     payload = {**_payload(row), **(payload_patch or {})}
     mapping_id = payload.get("mapping_id") or row.entity_id
@@ -189,6 +195,7 @@ HANDLERS: dict[str, Handler] = {
     "mapping.confirm": _mapping_confirm,
     "whatsapp.send": _whatsapp,
     "quote.discount": _quote_discount,
+    "social.publish": _social_publish,
 }
 
 
@@ -321,6 +328,10 @@ def apply_approval_decision(
         row.status = "rejected"
         row.decision_note = note
         row.decided_by = actor_id
+        if row.action_type == "social.publish":
+            from app.services.social import reject_pending_posts
+
+            reject_pending_posts(db, tenant_id=tenant_id, approval=row, note=note)
         if entity_type == "lead" and entity_id:
             upsert_state(
                 db,

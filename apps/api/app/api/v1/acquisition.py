@@ -18,6 +18,7 @@ from app.schemas.acquisition import (
     DedupeOut,
     PublicFormIn,
     PublicFormOut,
+    PublicFormPatch,
 )
 from app.schemas.common import Envelope, Meta
 from app.schemas.crm import LeadOut, LeadScoreOut
@@ -32,7 +33,9 @@ from app.services.public_forms import (
     form_key_url,
     interest_form_url,
     list_form_keys,
+    loads_form_fields,
     revoke_form_key,
+    update_form_design,
 )
 from app.services.query import get_owned, paginate
 
@@ -169,7 +172,14 @@ def list_public_form_keys(
 ) -> Envelope[list[PublicFormOut]]:
     rows = list_form_keys(db, ctx.tenant_id)
     data = [
-        PublicFormOut(id=row.id, name=row.name, status=row.status, url=form_key_url(row), last_used_at=row.last_used_at)
+        PublicFormOut(
+            id=row.id,
+            name=row.name,
+            status=row.status,
+            url=form_key_url(row),
+            last_used_at=row.last_used_at,
+            fields=loads_form_fields(row.schema_json),
+        )
         for row in rows
     ]
     return Envelope(data=data, meta=Meta(total=len(data)))
@@ -189,9 +199,45 @@ def create_public_form_key(
         raise HTTPException(status_code=422, detail="Form name is too long.")
     if active_form_name_taken(db, ctx.tenant_id, label):
         raise HTTPException(status_code=409, detail="A form with that name already exists.")
-    row, raw = create_form_key(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id, name=label)
+    fields = [item.model_dump() for item in body.fields] if body is not None and body.fields else None
+    row, raw = create_form_key(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id, name=label, fields=fields)
     db.commit()
-    return Envelope(data={"id": str(row.id), "name": row.name, "token": raw, "status": row.status, "url": form_key_url(row)})
+    return Envelope(
+        data={
+            "id": str(row.id),
+            "name": row.name,
+            "token": raw,
+            "status": row.status,
+            "url": form_key_url(row),
+            "fields": loads_form_fields(row.schema_json),
+        }
+    )
+
+
+@router.patch("/form-keys/{key_id}", response_model=Envelope[PublicFormOut])
+def update_public_form_key(
+    key_id: UUID,
+    body: PublicFormPatch,
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("acquisition.write"))],
+) -> Envelope[PublicFormOut]:
+    row = get_owned(db, PublicFormKey, ctx.tenant_id, key_id)
+    label = body.name.strip()
+    if active_form_name_taken(db, ctx.tenant_id, label, exclude_id=row.id):
+        raise HTTPException(status_code=409, detail="A form with that name already exists.")
+    update_form_design(db, row, name=label, fields=[item.model_dump() for item in body.fields])
+    db.commit()
+    db.refresh(row)
+    return Envelope(
+        data=PublicFormOut(
+            id=row.id,
+            name=row.name,
+            status=row.status,
+            url=form_key_url(row),
+            last_used_at=row.last_used_at,
+            fields=loads_form_fields(row.schema_json),
+        )
+    )
 
 
 @router.post("/form-keys/{key_id}/revoke", response_model=Envelope[dict])

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import AuthContext, require_permission
 from app.db.session import get_db
 from app.models.crm import ICP, Account, Activity, Contact, Customer, Lead, Opportunity, Task
+from app.models.identity import User
 from app.schemas.common import Envelope, Meta
 from app.schemas.crm import (
     AccountContextOut,
@@ -19,6 +20,8 @@ from app.schemas.crm import (
     CustomerOut,
     ICPIn,
     ICPOut,
+    LeadAssign,
+    LeadAssigneeOut,
     LeadIn,
     LeadOut,
     LeadScoreOut,
@@ -30,9 +33,9 @@ from app.schemas.crm import (
 )
 from app.schemas.pilot import ChurnIn, CloseLostIn
 from app.services.audit import emit_event, write_audit
-from app.services.crm import STAGE_PROBABILITY, add_activity, close_won, latest_lead_score
+from app.services.crm import STAGE_PROBABILITY, add_activity, assign_lead, close_won, latest_lead_score, list_lead_assignees
 from app.services.enrichment import enrich_owned_lead
-from app.services.nba import generate_for_lead, generate_for_opportunity
+from app.services.nba import generate_for_lead, generate_for_opportunity, steps_for_lead
 from app.services.orchestrator import process_pending_events
 from app.services.outcomes import close_lost, mark_churned
 from app.services.query import get_owned, paginate
@@ -41,11 +44,17 @@ from app.services.scoring import score_lead
 router = APIRouter(tags=["crm"])
 
 
-def _lead_out(db: Session, lead: Lead) -> LeadOut:
+def _lead_out(db: Session, lead: Lead, names: dict[UUID, str] | None = None) -> LeadOut:
     score = latest_lead_score(db, lead)
     payload = LeadOut.model_validate(lead)
     if score is not None:
         payload.latest_score = LeadScoreOut.model_validate(score)
+    if lead.owner_id:
+        if names is not None:
+            payload.owner_name = names.get(lead.owner_id, "")
+        else:
+            owner = db.scalar(select(User).where(User.id == lead.owner_id, User.tenant_id == lead.tenant_id))
+            payload.owner_name = owner.name if owner else ""
     return payload
 
 
@@ -304,10 +313,24 @@ def list_leads(
             or_(Lead.first_name.ilike(f"%{q}%"), Lead.last_name.ilike(f"%{q}%"), Lead.company_name.ilike(f"%{q}%"))
         )
     rows, total = paginate(db, stmt.order_by(Lead.created_at.desc()), page, page_size)
+    owner_ids = {row.owner_id for row in rows if row.owner_id}
+    names = {
+        user.id: user.name
+        for user in db.scalars(select(User).where(User.id.in_(owner_ids))).all()
+    } if owner_ids else {}
     return Envelope(
-        data=[_lead_out(db, row) for row in rows],
+        data=[_lead_out(db, row, names) for row in rows],
         meta=Meta(page=page, page_size=page_size, total=total),
     )
+
+
+@router.get("/leads/assignees", response_model=Envelope[list[LeadAssigneeOut]])
+def lead_assignees(
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("leads.read"))],
+) -> Envelope[list[LeadAssigneeOut]]:
+    rows = [LeadAssigneeOut.model_validate(row) for row in list_lead_assignees(db, ctx.tenant_id)]
+    return Envelope(data=rows, meta=Meta(total=len(rows), page_size=len(rows) or 25))
 
 
 @router.post("/leads", response_model=Envelope[LeadOut])
@@ -383,6 +406,30 @@ def update_lead(
         after=body.model_dump(),
         correlation_id=ctx.correlation_id,
     )
+    db.commit()
+    db.refresh(row)
+    return Envelope(data=_lead_out(db, row))
+
+
+@router.post("/leads/{lead_id}/assign", response_model=Envelope[LeadOut])
+def assign_lead_owner(
+    lead_id: UUID,
+    body: LeadAssign,
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("leads.write"))],
+) -> Envelope[LeadOut]:
+    row = get_owned(db, Lead, ctx.tenant_id, lead_id)
+    try:
+        assign_lead(
+            db,
+            tenant_id=ctx.tenant_id,
+            actor_id=ctx.user.id,
+            lead=row,
+            owner_id=body.owner_id,
+            correlation_id=ctx.correlation_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.commit()
     db.refresh(row)
     return Envelope(data=_lead_out(db, row))
@@ -783,7 +830,9 @@ def lead_nba(
     row = generate_for_lead(db, ctx.tenant_id, lead, ctx.user.id)
     db.commit()
     db.refresh(row)
-    return Envelope(data=NBAOut.model_validate(row))
+    payload = NBAOut.model_validate(row)
+    payload.steps = steps_for_lead(lead)
+    return Envelope(data=payload)
 
 
 @router.post("/opportunities/{opportunity_id}/nba", response_model=Envelope[NBAOut])

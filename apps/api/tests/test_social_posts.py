@@ -11,8 +11,10 @@ from app.providers.social import (
     LinkedInSocialPublisher,
     MetaSocialPublisher,
     SocialPublishResult,
+    choose_facebook_permalink,
     instagram_caption,
     public_post_url,
+    resolved_permalink,
 )
 from tests.conftest import login
 
@@ -26,6 +28,22 @@ def test_public_post_url_builds_network_links() -> None:
         public_post_url("facebook", "111_222", "https://www.facebook.com/permalink.php?story_fbid=p&id=111")
         == "https://www.facebook.com/permalink.php?story_fbid=p&id=111"
     )
+    graph = "https://www.facebook.com/122097522249494891/posts/122108961333494891"
+    external = "1375611092307204_122108961333494891"
+    assert public_post_url("facebook", external, graph) == graph
+    assert choose_facebook_permalink(external, graph) == graph
+    assert choose_facebook_permalink("111_222", "") == "https://www.facebook.com/permalink.php?story_fbid=222&id=111"
+    placeholder = "https://www.facebook.com/permalink.php?story_fbid=122108961333494891&id=1375611092307204"
+    assert resolved_permalink("facebook", external, graph) == graph
+    assert resolved_permalink("facebook", external, placeholder, token="") == placeholder
+
+
+def test_facebook_placeholder_is_replaced_with_the_graph_link(monkeypatch) -> None:
+    graph = "https://www.facebook.com/122097522249494891/posts/122108961333494891"
+    external = "1375611092307204_122108961333494891"
+    placeholder = "https://www.facebook.com/permalink.php?story_fbid=122108961333494891&id=1375611092307204"
+    monkeypatch.setattr("app.providers.social.fetch_facebook_permalink", lambda token, external_id: graph)
+    assert resolved_permalink("facebook", external, placeholder, token="page-token") == graph
 
 
 def test_mock_linkedin_post_is_not_sent(client: TestClient, monkeypatch) -> None:
@@ -135,6 +153,80 @@ def test_facebook_publisher_stores_permalink() -> None:
     assert result.ok is True
     assert result.external_id == "111_222"
     assert result.permalink == "https://www.facebook.com/111/posts/222"
+
+
+def test_facebook_leaves_off_a_link_meta_cannot_open() -> None:
+    class _Response:
+        def __init__(self, payload: dict) -> None:
+            self.status_code = 200
+            self.content = b"{}"
+            self._payload = payload
+
+        def json(self) -> dict:
+            return self._payload
+
+    class _Client:
+        def __init__(self) -> None:
+            self.data: dict = {}
+
+        def post(self, url: str, data: dict | None = None, files: dict | None = None) -> _Response:
+            _ = (url, files)
+            self.data = data or {}
+            return _Response({"id": "111_222"})
+
+        def get(self, url: str, params: dict | None = None) -> _Response:
+            _ = (url, params)
+            return _Response({"permalink_url": "https://www.facebook.com/111/posts/222"})
+
+    client = _Client()
+    result = MetaSocialPublisher(page_id="111", page_token="token", client=client).publish(  # type: ignore[arg-type]
+        body="Hello page.",
+        link_url="http://localhost:3000/capture/demo",
+    )
+    assert result.ok is True
+    assert "link" not in client.data
+
+
+def test_instagram_hosts_a_local_banner_before_publishing() -> None:
+    class _Response:
+        def __init__(self, payload: dict) -> None:
+            self.status_code = 200
+            self.content = b"{}"
+            self._payload = payload
+
+        def json(self) -> dict:
+            return self._payload
+
+    class _Client:
+        def __init__(self) -> None:
+            self.image_url = ""
+
+        def post(self, url: str, data: dict | None = None, files: dict | None = None) -> _Response:
+            _ = url
+            if files:
+                return _Response({"id": "photo1"})
+            payload = data or {}
+            if "image_url" in payload:
+                self.image_url = str(payload["image_url"])
+                return _Response({"id": "creation1"})
+            return _Response({"id": "media1"})
+
+        def get(self, url: str, params: dict | None = None) -> _Response:
+            _ = url
+            if params and params.get("fields") == "images":
+                return _Response({"images": [{"source": "https://cdn.example.test/hosted.jpg", "width": 1200}]})
+            return _Response({"permalink": "https://www.instagram.com/p/abc/"})
+
+    client = _Client()
+    result = MetaSocialPublisher(page_id="1", page_token="token", instagram_id="9", client=client).publish(  # type: ignore[arg-type]
+        body="See the offer.",
+        image_url="http://localhost:8000/api/v1/public/media/abc",
+        image_bytes=b"\x89PNG",
+        instagram=True,
+    )
+    assert result.ok is True
+    assert client.image_url == "https://cdn.example.test/hosted.jpg"
+    assert result.permalink == "https://www.instagram.com/p/abc/"
 
 
 def test_selected_form_is_attached_to_the_post(client: TestClient) -> None:
@@ -436,3 +528,90 @@ def test_prepared_channels_do_not_publish(client: TestClient) -> None:
     assert ads.ok is False
     assert ads.is_mock is False
     assert "not configured" in ads.reason
+
+
+def test_title_artwork_leaves_the_ranking_text_off_the_picture() -> None:
+    from app.services.social_artwork import draw_banner_png, draw_title_clip
+
+    png = draw_banner_png("Plant line")
+    clip = draw_title_clip("Plant line")
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert clip.startswith(b"GIF89a")
+    assert b"creative relevance" not in png
+    assert b"creative relevance" not in clip
+
+
+def test_saved_post_waits_until_approved(client: TestClient, monkeypatch) -> None:
+    calls: list[str] = []
+
+    def fake_send(db, tenant_id, normalized, body, link_url, image_url):
+        _ = (db, tenant_id, body, link_url, image_url)
+        calls.append(normalized)
+        return (
+            "published",
+            SocialPublishResult(ok=True, provider="test", is_mock=False, external_id="ext-1", permalink="https://example.test/post"),
+        )
+
+    monkeypatch.setattr("app.services.social._send", fake_send)
+    monkeypatch.setattr("app.services.dispatcher._channel_blocked", lambda *args, **kwargs: "")
+    headers = login(client)
+    created = client.post(
+        "/api/v1/social/submissions",
+        headers=headers,
+        json={
+            "headline": "Plant line in two weeks",
+            "keyword": "governed ai",
+            "ranking_parameter": "creative relevance",
+            "snippet": "One line about a plant.",
+            "context": "A short note for operators.",
+            "body": "The line is ready for a walkthrough.",
+            "channels": ["linkedin", "facebook"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    data = created.json()["data"]
+    assert calls == []
+    assert {row["status"] for row in data["posts"]} == {"pending_approval"}
+    assert all("governed ai" not in row["body"].lower() for row in data["posts"])
+    assert all(row["external_id"] == "" for row in data["posts"])
+    listed = client.get("/api/v1/ai/approvals", headers=headers)
+    assert listed.status_code == 200, listed.text
+    match = next(item for item in listed.json()["data"] if item["id"] == data["approval_id"])
+    assert match["category"] == "MARKETING"
+    assert match["status"] == "pending"
+    assert match["who"] == "LinkedIn, Facebook"
+    decided = client.post(
+        f"/api/v1/ai/approvals/{data['approval_id']}/decide",
+        headers=headers,
+        json={"decision": "approve", "note": "Approved in test"},
+    )
+    assert decided.status_code == 200, decided.text
+    assert calls == ["linkedin", "facebook"]
+    again = client.get("/api/v1/social/posts", headers=headers)
+    saved = [item for item in again.json()["data"] if item["id"] in {row["id"] for row in data["posts"]}]
+    assert {item["status"] for item in saved} == {"published"}
+    held = client.post(
+        "/api/v1/social/submissions",
+        headers=headers,
+        json={
+            "headline": "Hold this plant note",
+            "keyword": "governed ai",
+            "ranking_parameter": "creative relevance",
+            "snippet": "One line about a plant.",
+            "context": "A short note for operators.",
+            "body": "This one should stay unpublished.",
+            "channels": ["linkedin"],
+        },
+    )
+    assert held.status_code == 200, held.text
+    held_data = held.json()["data"]
+    refused = client.post(
+        f"/api/v1/ai/approvals/{held_data['approval_id']}/decide",
+        headers=headers,
+        json={"decision": "reject", "note": "Not this one"},
+    )
+    assert refused.status_code == 200, refused.text
+    after = client.get("/api/v1/social/posts", headers=headers)
+    refused_rows = [item for item in after.json()["data"] if item["id"] == held_data["posts"][0]["id"]]
+    assert refused_rows[0]["status"] == "rejected"
+    assert calls == ["linkedin", "facebook"]

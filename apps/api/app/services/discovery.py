@@ -16,7 +16,9 @@ from app.providers.lead_discovery import (
     DISCOVERY_DAILY_LIMIT,
     HARVEST_MAX_ITEMS,
     DiscoveredLead,
+    DiscoveryResult,
     get_lead_discovery_provider,
+    search_public_profiles,
 )
 from app.services.audit import emit_event, write_audit
 from app.services.autopilot_settings import discovered_today, get_or_create_settings
@@ -321,6 +323,38 @@ def candidates_today(db: Session, tenant_id: UUID) -> int:
     return total
 
 
+def _discover_people(db: Session, tenant_id: UUID, query, provider) -> DiscoveryResult:
+    settings = get_settings()
+    if is_circuit_open(db, tenant_id=tenant_id, provider="apify"):
+        fallback = search_public_profiles(
+            query,
+            token=settings.resolved_apify_token,
+            actor_id=settings.channel_search_apify_actor,
+        )
+        if fallback.candidates:
+            return fallback
+        health_state = get_health_state(db, tenant_id=tenant_id, provider="apify")
+        reason = health_state.last_error_summary if health_state and health_state.last_error_summary else "Blocked by provider"
+        return DiscoveryResult(
+            candidates=[],
+            provider="apify",
+            is_mock=False,
+            connected=False,
+            reason=reason,
+            failure_class="RATE_LIMIT",
+        )
+    result = provider.discover(query)
+    if result.failure_class == "RATE_LIMIT" and not result.candidates:
+        fallback = search_public_profiles(
+            query,
+            token=settings.resolved_apify_token,
+            actor_id=settings.channel_search_apify_actor,
+        )
+        if fallback.candidates:
+            return fallback
+    return result
+
+
 def remaining_candidate_budget(db: Session, settings: AutopilotSettings) -> int:
     per_run = HARVEST_MAX_ITEMS
     per_day = DISCOVERY_DAILY_LIMIT
@@ -369,12 +403,6 @@ def run_discovery(
     if enforce_budget and discovered_today(db, tenant_id) >= DISCOVERY_DAILY_LIMIT:
         empty["reason"] = "Daily discovered-lead cap reached"
         return empty
-    if is_circuit_open(db, tenant_id=tenant_id, provider="apify"):
-        health_state = get_health_state(db, tenant_id=tenant_id, provider="apify")
-        empty["reason"] = (health_state.last_error_summary if health_state and health_state.last_error_summary else "Blocked by provider")
-        empty["provider"] = "apify"
-        empty["is_mock"] = False
-        return empty
     max_items = remaining_candidate_budget(db, settings) if enforce_budget else min(env.apify_max_items, HARVEST_MAX_ITEMS)
     max_items = min(max_items, HARVEST_MAX_ITEMS)
     if enforce_budget and max_items <= 0:
@@ -398,7 +426,7 @@ def run_discovery(
         provider=str(health.get("provider") if isinstance(health, dict) else "discovery"),
         request_summary=f"max_items={query.max_items}",
     )
-    result = used.discover(query)
+    result = _discover_people(db, tenant_id, query, used)
     action.provider = result.provider
     created = 0
     skipped: dict[str, int] = {}

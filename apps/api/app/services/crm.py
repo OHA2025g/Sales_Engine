@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.crm import Account, Activity, Customer, Lead, Opportunity, Renewal
+from app.models.identity import Team, TeamMember, User
 from app.services.audit import emit_event, write_audit
 from app.services.idempotency import lock_row
 from app.services.ml.history import record_opportunity_fields
@@ -26,6 +27,60 @@ STAGE_PROBABILITY = {
     "closed_won": 100,
     "closed_lost": 0,
 }
+
+
+def list_lead_assignees(db: Session, tenant_id: UUID) -> list[dict[str, str | UUID]]:
+    rows = db.execute(
+        select(User, Team.name)
+        .join(TeamMember, TeamMember.user_id == User.id)
+        .join(Team, Team.id == TeamMember.team_id)
+        .where(User.tenant_id == tenant_id, User.is_active.is_(True), Team.tenant_id == tenant_id)
+        .order_by(User.name.asc())
+    ).all()
+    people: dict[UUID, dict[str, str | UUID]] = {}
+    for user, team_name in rows:
+        people.setdefault(user.id, {"id": user.id, "name": user.name, "email": user.email, "team_name": team_name})
+    if people:
+        return list(people.values())
+    users = db.scalars(select(User).where(User.tenant_id == tenant_id, User.is_active.is_(True)).order_by(User.name.asc())).all()
+    return [{"id": user.id, "name": user.name, "email": user.email, "team_name": ""} for user in users]
+
+
+def assign_lead(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    lead: Lead,
+    owner_id: UUID | None,
+    correlation_id: str,
+) -> None:
+    if owner_id is not None and owner_id not in {row["id"] for row in list_lead_assignees(db, tenant_id)}:
+        raise ValueError("Choose an active team member.")
+    previous = lead.owner_id
+    lead.owner_id = owner_id
+    lead.updated_by = actor_id
+    owner = db.scalar(select(User).where(User.id == owner_id, User.tenant_id == tenant_id)) if owner_id else None
+    add_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        entity_type="lead",
+        entity_id=str(lead.id),
+        activity_type="assigned",
+        title=f"Assigned to {owner.name}" if owner else "Assignment cleared",
+    )
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="lead.assign",
+        entity_type="lead",
+        entity_id=str(lead.id),
+        before={"owner_id": str(previous) if previous else ""},
+        after={"owner_id": str(owner_id) if owner_id else ""},
+        correlation_id=correlation_id,
+    )
 
 
 def add_activity(

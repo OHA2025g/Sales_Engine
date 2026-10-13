@@ -15,6 +15,7 @@ class SocialPost(Base, TenantOwnedMixin):
     extra_links: Mapped[str] = mapped_column(Text, default="", nullable=False)
     form_key_id: Mapped[UUID | None] = mapped_column(ForeignKey("public_form_keys.id"), nullable=True)
     image_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    video_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="failed", nullable=False)
     provider: Mapped[str] = mapped_column(String(40), default="", nullable=False)
     external_id: Mapped[str] = mapped_column(String(300), default="", nullable=False)

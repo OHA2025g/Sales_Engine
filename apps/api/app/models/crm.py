@@ -93,6 +93,7 @@ class Lead(Base, TenantOwnedMixin):
     ad_id: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     utm_medium: Mapped[str] = mapped_column(String(80), default="", nullable=False)
     utm_campaign: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    owner_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class LeadScore(Base, TenantOwnedMixin):

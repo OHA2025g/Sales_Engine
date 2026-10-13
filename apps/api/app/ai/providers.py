@@ -44,7 +44,9 @@ class MockLLMProvider(LLMProvider):
             "[MOCK LLM] Grounded response using retrieved tools and knowledge only. "
             f"System={system[:80]}. Prompt excerpt: {snippet}"
         )
-        if "email" in system.lower() or "draft" in prompt.lower():
+        if "whatsapp" in system.lower():
+            text = "Hello, this is a short draft about a possible conversation. It has not been sent."
+        elif "email" in system.lower() or "draft" in prompt.lower():
             text = (
                 "Subject: Follow-up from AGRAYIAN AI Labs\n\n"
                 "Hello,\n\nBased on the account context provided by tools, I recommend a concise "

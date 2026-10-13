@@ -2,7 +2,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.providers.object_storage import LocalObjectStorageProvider, content_checksum, knowledge_object_key
+from app.providers.object_storage import (
+    LocalObjectStorageProvider,
+    S3CompatibleObjectStorageProvider,
+    content_checksum,
+    knowledge_object_key,
+)
 from tests.conftest import login
 
 
@@ -14,6 +19,18 @@ def test_local_object_storage_round_trip(tmp_path: Path) -> None:
     assert store.get(key) == b"hello-bytes"
     assert content_checksum(b"hello-bytes") == content_checksum(store.get(key))
     assert "knowledge" in store.presign(key)
+
+
+def test_s3_put_is_signed_for_minio() -> None:
+    store = S3CompatibleObjectStorageProvider.__new__(S3CompatibleObjectStorageProvider)
+    store.endpoint = "http://minio:9000"
+    store.bucket = "agrayian"
+    store.access_key = "access"
+    store.secret_key = "secret"
+    url, headers = store._signed("PUT", "tenant/demo/social/banner", b"png", content_type="image/png")
+    assert url == "http://minio:9000/agrayian/tenant/demo/social/banner"
+    assert headers["Authorization"].startswith("AWS4-HMAC-SHA256 Credential=access/")
+    assert "content-type" in headers["Authorization"]
 
 
 def test_knowledge_object_key_is_tenant_scoped() -> None:

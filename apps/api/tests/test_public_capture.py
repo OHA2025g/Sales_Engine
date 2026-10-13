@@ -50,6 +50,33 @@ def test_public_form_capture_is_key_scoped(client: TestClient) -> None:
     meta = client.get(f"/api/v1/public/forms/{token}/meta")
     assert meta.status_code == 200
     assert meta.json()["data"]["name"] == "site"
+    assert any(field["key"] == "email" for field in meta.json()["data"]["fields"])
+
+
+def test_designed_form_is_what_people_fill_in(client: TestClient) -> None:
+    headers = login(client)
+    created = client.post(
+        "/api/v1/acquisition/form-keys",
+        headers=headers,
+        json={
+            "name": "Campus visit",
+            "fields": [
+                {"key": "first_name", "label": "Given name", "type": "text", "required": True, "placeholder": "", "options": []},
+                {"key": "last_name", "label": "Family name", "type": "text", "required": True, "placeholder": "", "options": []},
+                {"key": "email", "label": "Email", "type": "email", "required": True, "placeholder": "", "options": []},
+                {"key": "request_note", "label": "Visit goal", "type": "textarea", "required": True, "placeholder": "Why visit?", "options": []},
+                {"key": "consent_email", "label": "Contact me", "type": "checkbox", "required": True, "placeholder": "", "options": []},
+                {"key": "custom_budget", "label": "Budget", "type": "select", "required": False, "placeholder": "", "options": ["Under 10", "Over 10"]},
+            ],
+        },
+    )
+    assert created.status_code == 200, created.text
+    token = created.json()["data"]["url"].rsplit("/", 1)[-1]
+    page = client.get(f"/api/v1/public/forms/{token}")
+    assert page.status_code == 200
+    assert "Given name" in page.text
+    assert "Budget" in page.text
+    assert "Phone" not in page.text
 
 
 def test_incomplete_interest_stays_in_review(client: TestClient) -> None:

@@ -13,6 +13,7 @@ from app.services.query import paginate
 
 CIRCUIT_THRESHOLD = 5
 CIRCUIT_COOLDOWN = timedelta(minutes=5)
+RATE_LIMIT_COOLDOWN = timedelta(hours=12)
 MAX_ATTEMPTS = 5
 DEFAULT_ALERTS = {
     "provider_failure_spike": 10,
@@ -60,7 +61,8 @@ def is_circuit_open(db: Session, *, tenant_id: UUID, provider: str, now: datetim
         return False
     current = now or datetime.now(UTC)
     opened = row.opened_at if row.opened_at.tzinfo else row.opened_at.replace(tzinfo=UTC)
-    return current - opened < CIRCUIT_COOLDOWN
+    cooldown = RATE_LIMIT_COOLDOWN if row.state == "RATE_LIMITED" else CIRCUIT_COOLDOWN
+    return current - opened < cooldown
 
 
 def record_provider_result(
@@ -94,7 +96,7 @@ def record_provider_result(
         row.last_error_summary = redact(error)
         if failure_class == "RATE_LIMIT":
             row.state = "RATE_LIMITED"
-            row.opened_at = row.opened_at or now
+            row.opened_at = now
         elif failure_class == "AUTHENTICATION":
             row.state = "ERROR"
         elif failure_class == "CONFIGURATION":

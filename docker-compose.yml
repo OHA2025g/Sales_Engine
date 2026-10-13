@@ -28,7 +28,7 @@ services:
       retries: 10
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -60,6 +60,8 @@ services:
       WEB_APP_ORIGIN: http://localhost:${AGRAYIAN_WEB_PORT:-3000}
       PUBLIC_API_BASE_URL: http://localhost:${AGRAYIAN_API_PORT:-8000}
       GOOGLE_REDIRECT_URI: http://localhost:${AGRAYIAN_API_PORT:-8000}/api/v1/integrations/google/callback
+      SEED_DEMO: ${SEED_DEMO:-true}
+      CHANNEL_SEARCH_BACKGROUND: "true"
     ports:
       - "${AGRAYIAN_API_PORT:-8000}:8000"
     depends_on:
@@ -88,7 +90,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.workers.celery_app worker --loglevel=info -Q celery,automation,providers,ai,maintenance
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 -Q celery,automation,providers,ai,maintenance
 
   beat:
     build:
@@ -112,6 +114,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:${AGRAYIAN_API_PORT:-8000}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:${AGRAYIAN_API_PORT:-8000}
@@ -120,7 +124,7 @@ services:
     depends_on:
       - api
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000 || exit 1"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 10

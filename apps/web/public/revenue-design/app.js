@@ -77,8 +77,8 @@ let current='home';let toastTimer;
 function toast(message){const node=document.getElementById('toast');node.textContent=message;node.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>node.classList.remove('show'),4200);}
 function navigate(id){location.hash='/'+id;}
 function render(){const raw=location.hash.replace(/^#\/?/,'');const [route,query='']=raw.split('?');const id=decodeURIComponent(route);current=SCREEN[id]?id:'home';const requested=new URLSearchParams(query).get('record');selectedRecord=requested?recordById(requested):null;const s=SCREEN[current];document.title=(selectedRecord?recordName(selectedRecord):s.title)+' · Sales Engine';let body=requested?(selectedRecord?renderRecordDetail(selectedRecord):emptyView('Record unavailable','This record is not saved in this browser. Open the record list and select an available record.')):s.view==='table'?renderTable(s):(VIEWS[s.view]?VIEWS[s.view]():emptyView('Design not available','This page needs a layout.'));if(!requested&&!['login','capture'].includes(s.id))body+=manualWorkspacePanel(s.id);if(!requested&&['social','content','campaigns','acquisition'].includes(s.id))body+='<div id="interest-form-host" class="section-gap"></div>';document.getElementById('app').innerHTML=['login','capture'].includes(s.id)&&!requested?body:shell(s,body);bindPage();restorePageSettings();if(current==='voice'&&!selectedRecord)mountDograhTest();if(['social','content','campaigns','acquisition'].includes(current)&&!selectedRecord)mountInterestForm();}
-function bindPage(){document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>act(b.dataset.action)));const role=document.getElementById('role');if(role)role.addEventListener('change',()=>{state.role=role.value;render();toast('Role workspace changed. Access rules are illustrative.');});const search=document.querySelector('[data-table-search]'),filter=document.querySelector('[data-table-filter]');const filterTable=()=>{const q=(search?.value||'').toLowerCase(),f=(filter?.value||'').toLowerCase();let visible=0;document.querySelectorAll('tbody tr[data-search]').forEach(r=>{const yes=r.dataset.search.includes(q)&&(!f||r.dataset.search.includes(f));r.hidden=!yes;if(yes)visible++;});const no=document.getElementById('no-results');if(no)no.hidden=visible>0;};search?.addEventListener('input',filterTable);filter?.addEventListener('change',filterTable);document.getElementById('design-state')?.addEventListener('change',e=>document.getElementById('design-state-preview').innerHTML=statePreview(e.target.value));document.getElementById('login-form')?.addEventListener('submit',e=>{e.preventDefault();navigate('home');toast('Demo workspace opened.');});document.getElementById('capture-form')?.addEventListener('submit',e=>{e.preventDefault();captureLead(e.target);});}
-function modal(title,body,buttons=''){const d=document.getElementById('modal');d.innerHTML=`<header class="modal-head"><h2 id="modal-title">${h(title)}</h2><button class="btn iconbtn" data-modal-close aria-label="Close dialog">${icon('x')}</button></header><div class="modal-body">${body}</div>${buttons?`<footer class="modal-foot">${buttons}</footer>`:''}`;d.querySelector('[data-modal-close]').addEventListener('click',()=>d.close());d.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>act(b.dataset.action)));if(!d.open)d.showModal();return d;}
+function bindPage(){document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',event=>{if(b.tagName==='BUTTON')event.stopPropagation();act(b.dataset.action);}));document.querySelectorAll('.connection-card').forEach(card=>{card.addEventListener('click',event=>{if(event.target.closest('button'))return;act('connection-details:'+card.dataset.connection);});card.addEventListener('keydown',event=>{if(event.target!==card)return;if(event.key!=='Enter'&&event.key!==' ')return;event.preventDefault();act('connection-details:'+card.dataset.connection);});});const role=document.getElementById('role');if(role)role.addEventListener('change',()=>{state.role=role.value;render();toast('Role workspace changed. Access rules are illustrative.');});const search=document.querySelector('[data-table-search]'),filter=document.querySelector('[data-table-filter]');const filterTable=()=>{const q=(search?.value||'').toLowerCase(),f=(filter?.value||'').toLowerCase();let visible=0;document.querySelectorAll('tbody tr[data-search]').forEach(r=>{const yes=r.dataset.search.includes(q)&&(!f||r.dataset.search.includes(f));r.hidden=!yes;if(yes)visible++;});const no=document.getElementById('no-results');if(no)no.hidden=visible>0;};search?.addEventListener('input',filterTable);filter?.addEventListener('change',filterTable);document.getElementById('design-state')?.addEventListener('change',e=>document.getElementById('design-state-preview').innerHTML=statePreview(e.target.value));document.getElementById('login-form')?.addEventListener('submit',e=>{e.preventDefault();navigate('home');toast('Demo workspace opened.');});document.getElementById('capture-form')?.addEventListener('submit',e=>{e.preventDefault();captureLead(e.target);});}
+function modal(title,body,buttons=''){const d=document.getElementById('modal');d.classList.remove('connection-dialog');d.innerHTML=`<header class="modal-head"><h2 id="modal-title">${h(title)}</h2><button class="btn iconbtn" data-modal-close aria-label="Close dialog">${icon('x')}</button></header><div class="modal-body">${body}</div>${buttons?`<footer class="modal-foot">${buttons}</footer>`:''}`;d.querySelector('[data-modal-close]').addEventListener('click',()=>d.close());d.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>act(b.dataset.action)));if(!d.open)d.showModal();return d;}
 function closeModal(){const d=document.getElementById('modal');d.close();if(!activeForm){d.classList.remove('entity-dialog');d.oncancel=null;}}
 function searchDialog(){if(activeForm){document.querySelector('[data-form-cancel]')?.click();return;}const d=modal('Find a page or record',`<label class="field">Search the complete product<input id="command-search" placeholder="Try quotes, customer, policy, or lead" autofocus></label><div class="command-results" id="command-results"></div>`);const input=d.querySelector('#command-search');const results=d.querySelector('#command-results');const update=()=>{const q=input.value.toLowerCase();results.innerHTML=SCREENS.filter(s=>[s.title,s.workspace,s.original].join(' ').toLowerCase().includes(q)).slice(0,18).map(s=>`<a href="#/${s.id}">${icon(WORKSPACES.find(w=>w.id===s.workspace).icon)}${h(s.title)}<small>${h(WORKSPACES.find(w=>w.id===s.workspace).name)}</small></a>`).join('')||'<div class="empty">No matching pages.</div>';results.querySelectorAll('a').forEach(a=>a.addEventListener('click',closeModal));};input.addEventListener('input',update);update();setTimeout(()=>input.focus(),20);}
 
@@ -117,6 +117,7 @@ function act(action){if(routeEntityAction(action))return;const [kind,...parts]=a
  if(kind==='recover'){modal('Recover without repeating completed effects',`${checks([['Inspect the last provider result and action key',true],['Reconcile unknown external outcome before retry',true],['Revalidate eligibility and authorization',true],['Resume from the failed step',true]])}<p class="small muted">Recovery is an explicit state with an owner and retry budget. Failed events do not disappear as completed work.</p>`,go('Execution centre','runs')+btn('Close','close'));return;}
  if(kind==='customer-message'){modal('Customer communication · Cedar Health',`<div class="callout"><div>Recipient: Neha Iyer · verified relationship contact<br>Context: activation milestone and open dependency</div></div><label class="field">Message<textarea>We have prepared an update on the activation milestone and the remaining integration dependency. Let us confirm the accountable owner and next evidence of progress in the value review.</textarea></label><p class="small muted">The design separates message authorization from deferred, delivered, and failed outcomes.</p>`,btn('Close','close')+btn('Authorize example message','authorize-customer',true));return;}
  if(kind==='authorize-customer'){if(state.paused){toast('Workspace paused. No example dispatch occurs.');return;}closeModal();toast('Example message authorized. A delivery result would be tracked separately.');return;}
+ if(kind==='connection-details'){openConnectionDetails(value);return;}
  if(kind==='connection'){connectAccount(value);return;}
  if(kind==='connection-save'){connectAccount('');return;}
  if(kind==='sso'){modal('Enterprise sign-in',`<p>The production implementation connects the selected identity provider, enforces workspace policy, and applies role and session rules.</p><label class="field">Workspace domain<input value="example.com"></label><p class="small muted">This is a design preview and does not start authentication.</p>`,btn('Close','close'));return;}
@@ -152,7 +153,14 @@ function integrations(){
   const intro=state.connectionError
     ?notice('<strong>Connections could not be read</strong><p>'+h(state.connectionError)+'</p>','warn')
     :notice('<strong>Workspace connections</strong><p>'+h(connectionSummary(live))+'</p>',live?'good':'');
-  const cards=[
+  return intro+'<div class="grid three">'+connectionCatalog().map(([name,desc,ic])=>{
+    const row=connectionCard(name);
+    return `<section class="panel workspace-card connection-card" data-connection="${h(name)}" tabindex="0"><div class="between"><span class="avatar square">${icon(ic)}</span>${badge(row.status,row.kind)}</div><h2>${h(name)}</h2><p>${h(desc)}</p><span class="small muted">${h(row.note)}</span><div class="flex" style="margin-top:14px">${btn('View details','connection-details:'+name)}${btn(row.action,'connection:'+name,row.kind!=='good')}</div></section>`;
+  }).join('')+'</div>';
+}
+
+function connectionCatalog(){
+  return [
     ['Gmail','Email send, read, and replies','mail'],
     ['Google Calendar','Availability, booking, and changes','calendar'],
     ['LinkedIn Ads','Campaign, creative, and organization posts','megaphone'],
@@ -167,10 +175,6 @@ function integrations(){
     ['Support signals','Incidents and recovery context','heart'],
     ['Billing signals','Contract and payment evidence','document']
   ];
-  return intro+'<div class="grid three">'+cards.map(([name,desc,ic])=>{
-    const row=connectionCard(name);
-    return `<section class="panel workspace-card"><div class="between"><span class="avatar square">${icon(ic)}</span>${badge(row.status,row.kind)}</div><h2>${h(name)}</h2><p>${h(desc)}</p><span class="small muted">${h(row.note)}</span>${btn(row.action,'connection:'+name,row.kind!=='good')}</section>`;
-  }).join('')+'</div>';
 }
 
 function readConnectionReturn(){
@@ -262,6 +266,95 @@ function signalCard(on,label){
   return {status:'Not connected',note:'No '+label+' webhook is connected for this workspace.',action:'Check connection',kind:''};
 }
 
+function connectionProviders(name){
+  const providers={
+    Gmail:['google'],
+    'Google Calendar':['google'],
+    'LinkedIn Ads':['linkedin'],
+    'Meta distribution':['meta'],
+    'Discovery source':['apify'],
+    'Voice provider':['dograh','twilio','vapi','exotel'],
+    YouTube:['youtube'],
+    X:['x'],
+    WhatsApp:['whatsapp'],
+    'Google Ads':['google_ads'],
+    'Customer usage':['usage'],
+    'Support signals':['support'],
+    'Billing signals':['finance']
+  };
+  return providers[name]||[];
+}
+
+function modeFacts(row){
+  const item=row||{};
+  return [
+    ['Runtime mode',item.mode||'Unknown'],
+    ['Workspace credential',item.tenant_credential?'Stored':'Not stored'],
+    ['Deployment default',item.uses_deployment_default?'In use':'Not used'],
+    ['Resolver note',item.reason||'None']
+  ];
+}
+
+function connectionFacts(name){
+  if(state.connectionError)return [['Result',state.connectionError]];
+  const live=state.liveConnections;
+  if(!live)return [['Result','Connection details are still loading.']];
+  const post=live.posting||{};
+  const google=live.google||{};
+  const signals=live.signals||{};
+  const channels=live.channels||{};
+  const summary=[['Summary',connectionCard(name).note]];
+  if(name==='Gmail')return summary.concat([['Google app',google.oauth_ready?'Configured':'Not configured'],['Mailbox authorized',google.mail?'Yes':'No'],['Calendar authorized',google.calendar?'Yes':'No']],modeFacts(channels.email));
+  if(name==='Google Calendar')return summary.concat([['Google app',google.oauth_ready?'Configured':'Not configured'],['Calendar authorized',google.calendar?'Yes':'No'],['Mailbox authorized',google.mail?'Yes':'No']],modeFacts(channels.calendar));
+  if(name==='LinkedIn Ads')return summary.concat([['Organization posting',post.linkedin?'Configured':'Not configured'],['Ads account',post.linkedin_ads?'Configured':'Not configured']],modeFacts(channels.linkedin));
+  if(name==='Meta distribution')return summary.concat([['Facebook Page',post.meta_page?'Configured':'Not configured'],['Instagram',post.instagram?'Configured':'Not configured'],['Ads',post.meta_ads?'Configured':'Not configured'],['Ads mode',post.meta_ads_mode||'Not set']],modeFacts(channels.meta));
+  if(name==='Discovery source')return summary.concat([['Discovery',post.discovery?'Configured':'Not configured']],modeFacts(channels.discovery));
+  if(name==='Voice provider')return summary.concat([['Voice widget',post.voice_widget?'Configured':'Not configured'],['Voice agent',post.voice_agent?'Configured':'Not configured']],modeFacts(channels.dograh),[['Twilio mode',(channels.twilio||{}).mode||'Unknown'],['Vapi mode',(channels.vapi||{}).mode||'Unknown'],['Exotel mode',(channels.exotel||{}).mode||'Unknown']]);
+  if(name==='YouTube')return summary.concat([['Credentials',post.youtube?'Saved':'Not configured'],['Publishing','Off']]);
+  if(name==='X')return summary.concat([['Credentials',post.x?'Saved':'Not configured'],['Publishing','Off']]);
+  if(name==='WhatsApp')return summary.concat([['Credentials',post.whatsapp?'Saved':'Not configured'],['Publishing','Off']]);
+  if(name==='Google Ads')return summary.concat([['Credentials',post.google_ads?'Saved':'Not configured'],['Publishing','Off']]);
+  if(name==='Customer usage')return summary.concat([['Signed events',signals.usage?'Enabled':'Not connected']]);
+  if(name==='Support signals')return summary.concat([['Signed events',signals.support?'Enabled':'Not connected']]);
+  if(name==='Billing signals')return summary.concat([['Signed events',signals.finance?'Enabled':'Not connected']]);
+  return summary;
+}
+
+function formatWhen(value){
+  if(!value)return 'Not recorded';
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime()))return String(value);
+  return date.toLocaleString();
+}
+
+function accountFacts(account){
+  const rows=[
+    ['Provider',account.provider||'Unknown'],
+    ['Account',account.provider_account_id||'Not recorded'],
+    ['Account key',account.account_key||'default'],
+    ['Account status',account.status||'Unknown'],
+    ['Last success',formatWhen(account.last_success_at)],
+    ['Last sync',formatWhen(account.last_sync_at)],
+    ['Last failure',formatWhen(account.last_failure_at)],
+    ['Last error',account.last_error||'None']
+  ];
+  if(Array.isArray(account.scopes)&&account.scopes.length)rows.push(['Scopes',account.scopes.join(', ')]);
+  return rows;
+}
+
+function openConnectionDetails(name){
+  const found=connectionCatalog().find(row=>row[0]===name);
+  const desc=found?found[1]:'';
+  const row=connectionCard(name);
+  const facts=connectionFacts(name);
+  const accounts=(state.connectionAccounts||[]).filter(account=>connectionProviders(name).includes(account.provider));
+  const stored=accounts.length
+    ?'<h3 style="margin:18px 0 4px">Stored account</h3>'+accounts.map(account=>'<div class="detail-list">'+accountFacts(account).map(([label,value])=>listItem(label,value)).join('')+'</div>').join('')
+    :'<p class="small muted" style="margin-top:16px">No stored account record for this channel.</p>';
+  const dialog=modal(name,'<p>'+h(desc)+'</p><div class="flex" style="margin:14px 0">'+badge(row.status,row.kind)+'</div><div class="detail-list">'+facts.map(([label,value])=>listItem(label,value)).join('')+'</div>'+stored+'<p class="small muted" style="margin-top:16px">Tokens and secrets stay on the server and are not shown here.</p>',btn('Close','close')+btn(row.action,'connection:'+name,row.kind!=='good'));
+  dialog.classList.add('connection-dialog');
+}
+
 function apiBase(){
   return String(window.__AGRAYIAN_API_URL||'http://localhost:8000').replace(/\/$/,'');
 }
@@ -310,6 +403,11 @@ async function refreshConnections(provision){
     const body=await res.json().catch(()=>({}));
     if(!res.ok)throw new Error(messageOf(body,'Connection status could not be read'));
     state.liveConnections=body.data;
+    const accountsRes=await authed('/api/v1/integrations');
+    if(accountsRes.ok){
+      const accountsBody=await accountsRes.json().catch(()=>({}));
+      state.connectionAccounts=Array.isArray(accountsBody.data)?accountsBody.data:[];
+    }
     state.connectionError='';
   }catch(error){
     state.connectionError=error&&error.message?error.message:'Connection status could not be read';

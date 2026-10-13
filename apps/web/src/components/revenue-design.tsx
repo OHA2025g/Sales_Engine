@@ -47,6 +47,7 @@ function screenFromPath(path: string): string {
     "/automation/runs": "runs",
     "/automation/approvals": "approvals",
     "/automation/voice-scripts": "voice",
+    "/automation/test-call": "voice",
     "/playbooks": "playbooks",
     "/playbooks/builder": "playbook-builder",
     "/policies": "policies",
@@ -97,7 +98,7 @@ export function RevenueDesign() {
 
     const css = document.createElement("link");
     css.rel = "stylesheet";
-    css.href = "/revenue-design/style.css?v=record-forms";
+    css.href = "/revenue-design/style.css?v=system-font";
     document.head.appendChild(css);
 
     window.__AGRAYIAN_API_URL = "http://localhost:8000";
@@ -106,19 +107,16 @@ export function RevenueDesign() {
       window.location.hash = `/${screenFromPath(window.location.pathname.replace(/\/$/, "") || "/")}`;
     }
 
-    const data = document.createElement("script");
-    data.src = "/revenue-design/data.js";
-    data.onload = () => {
-      const forms = document.createElement("script");
-      forms.src = "/revenue-design/forms.js?v=interest-form";
-      forms.onload = () => {
-        const app = document.createElement("script");
-        app.src = "/revenue-design/app.js?v=interest-channels";
-        document.body.appendChild(app);
-      };
-      document.body.appendChild(forms);
-    };
-    document.body.appendChild(data);
+    for (const src of [
+      "/revenue-design/data.js",
+      "/revenue-design/forms.js?v=interest-form",
+      "/revenue-design/app.js?v=connection-details",
+    ]) {
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = false;
+      document.body.appendChild(script);
+    }
   }, []);
 
   return (

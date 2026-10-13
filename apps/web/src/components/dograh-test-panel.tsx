@@ -49,8 +49,7 @@ export function DograhTestPanel() {
   const [draft, setDraft] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [sending, setSending] = useState(false);
-  const mode: TestMode =
-    modeOverride ?? (config?.voice_widget_src && !config.chat_widget_src ? "voice" : "chat");
+  const mode: TestMode = modeOverride ?? (config?.voice_widget_src ? "voice" : "chat");
 
   const activeSrc = config?.ready ? widgetSrc(config, mode) : "";
 
@@ -172,14 +171,14 @@ export function DograhTestPanel() {
 
   const chatOpen = mode === "chat" && (chatState === "ready" || chatState === "waiting" || chatState === "starting");
   const voiceLabel =
-    voiceStatus === "connecting" ? "Connecting" : voiceStatus === "connected" ? "End audio test" : voiceStatus === "failed" ? "Retry audio test" : "Start audio test";
+    voiceStatus === "connecting" ? "Connecting" : voiceStatus === "connected" ? "End test call" : voiceStatus === "failed" ? "Retry test call" : "Start test call";
 
   return (
     <section className="panel mb-6 space-y-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="font-semibold text-navy">Test agent</p>
-          <p className="text-sm text-[var(--muted)]">Ask the Dograh agent here. This does not dial a phone.</p>
+          <p className="font-semibold text-navy">Test call</p>
+          <p className="text-sm text-[var(--muted)]">Talk to the Dograh voice agent in this browser. This does not dial a phone.</p>
         </div>
         {config.chat_widget_src && config.voice_widget_src ? (
           <div className="flex gap-2">

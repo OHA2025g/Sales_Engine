@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     apify_max_items: int = 30
     apify_linkedin_process_token: str = ""
     channel_search_provider: str = "auto"
+    channel_search_background: bool = False
     google_cse_api_key: str = ""
     google_cse_cx: str = ""
     channel_search_apify_actor: str = "apify/google-search-scraper"

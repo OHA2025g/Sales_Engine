@@ -10,7 +10,6 @@ LINKEDIN_POSTS_URL = "https://api.linkedin.com/rest/posts"
 LINKEDIN_VERSION = "202609"
 META_GRAPH = "https://graph.facebook.com/v21.0"
 _FACEBOOK_ID = re.compile(r"^[0-9]+(?:_[0-9]+)?$")
-_FACEBOOK_GUESSED_POST = re.compile(r"^https://(?:www\.)?facebook\.com/\d+/posts/\d+/?$", re.IGNORECASE)
 _LINKEDIN_URN = re.compile(r"^urn:li:(?:share|ugcPost|activity):[0-9]+$")
 _LINKEDIN_NUMERIC = re.compile(r"^[0-9]+$")
 _INSTAGRAM_ID = re.compile(r"^[0-9_]+$")
@@ -34,14 +33,18 @@ def instagram_caption(body: str, link_url: str = "") -> str:
     return text[:_INSTAGRAM_CAPTION_LIMIT]
 
 
-def instagram_can_fetch(image_url: str) -> bool:
-    parsed = urlsplit(image_url.strip())
+def provider_can_fetch(url: str) -> bool:
+    parsed = urlsplit(url.strip())
     host = (parsed.hostname or "").lower().rstrip(".")
     if parsed.scheme not in {"http", "https"} or not host:
         return False
-    if host in _LOCAL_IMAGE_HOSTS or host.endswith(".local"):
+    if host in _LOCAL_IMAGE_HOSTS or host.endswith(".local") or host.endswith(".localhost"):
         return False
     return True
+
+
+def instagram_can_fetch(image_url: str) -> bool:
+    return provider_can_fetch(image_url)
 
 
 @dataclass
@@ -69,23 +72,56 @@ def facebook_permalink_php(external_id: str) -> str:
     return f"https://www.facebook.com/permalink.php?story_fbid={post_id}&id={page_id}"
 
 
-def is_usable_facebook_permalink(url: str) -> bool:
+def _facebook_host_url(url: str) -> str:
+    value = (url or "").strip()
+    if value.startswith("https://facebook.com/"):
+        value = "https://www.facebook.com/" + value[len("https://facebook.com/") :]
+    return value.rstrip("/")
+
+
+def naive_facebook_posts_url(external_id: str) -> str:
+    page_id, post_id = _facebook_story_ids(external_id)
+    if not page_id:
+        return ""
+    return f"https://www.facebook.com/{page_id}/posts/{post_id}"
+
+
+def is_facebook_placeholder(url: str, external_id: str) -> bool:
+    value = _facebook_host_url(url)
+    if not value.startswith("https://www.facebook.com/"):
+        return False
+    guesses = {
+        item.rstrip("/")
+        for item in (facebook_permalink_php(external_id), naive_facebook_posts_url(external_id))
+        if item
+    }
+    return value in guesses
+
+
+def is_usable_facebook_permalink(url: str, external_id: str = "") -> bool:
     value = (url or "").strip()
     if not value.startswith("https://www.facebook.com/") and not value.startswith("https://facebook.com/"):
         return False
-    return _FACEBOOK_GUESSED_POST.fullmatch(value) is None
+    return not is_facebook_placeholder(value, external_id)
+
+
+def choose_facebook_permalink(external_id: str, graph_url: str) -> str:
+    url = (graph_url or "").strip()
+    if url.startswith("https://www.facebook.com/") or url.startswith("https://facebook.com/"):
+        return url
+    return facebook_permalink_php(external_id)
 
 
 def public_post_url(channel: str, external_id: str, stored: str = "") -> str:
     kept = (stored or "").strip()
     name = (channel or "").strip().lower()
-    if kept.startswith("https://") and (name != "facebook" or is_usable_facebook_permalink(kept)):
-        return kept
     value = (external_id or "").strip()
-    if not value:
-        return ""
     if name == "facebook":
+        if is_usable_facebook_permalink(kept, value):
+            return kept
         return facebook_permalink_php(value)
+    if kept.startswith("https://"):
+        return kept
     if name == "linkedin":
         if _LINKEDIN_URN.fullmatch(value):
             return f"https://www.linkedin.com/feed/update/{value}"
@@ -127,24 +163,13 @@ def fetch_facebook_permalink(token: str, external_id: str) -> str:
                 graph_url = str((response.json() or {}).get("permalink_url") or "").strip()
         except (httpx.HTTPError, ValueError):
             graph_url = ""
-    start = facebook_permalink_php(external_id)
-    try:
-        with httpx.Client(timeout=15.0, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"}) as client:
-            response = client.get(start or graph_url)
-        final = str(response.url)
-        if "pfbid" in final or "permalink.php" in final:
-            return final
-    except (httpx.HTTPError, ValueError):
-        pass
-    if is_usable_facebook_permalink(graph_url):
-        return graph_url
-    return start
+    return choose_facebook_permalink(external_id, graph_url)
 
 
 def resolved_permalink(channel: str, external_id: str, stored: str = "", token: str = "") -> str:
     name = (channel or "").strip().lower()
     if name == "facebook":
-        if is_usable_facebook_permalink(stored) and ("pfbid" in stored or "permalink.php" in stored):
+        if is_usable_facebook_permalink(stored, external_id):
             return stored.strip()
         fetched = fetch_facebook_permalink(token, external_id)
         if fetched:
@@ -287,18 +312,37 @@ class MetaSocialPublisher:
         self._instagram_id = instagram_id
         self._client = client
 
-    def publish(self, *, body: str, link_url: str = "", image_url: str = "", instagram: bool = False) -> SocialPublishResult:
+    def publish(
+        self,
+        *,
+        body: str,
+        link_url: str = "",
+        image_url: str = "",
+        image_bytes: bytes = b"",
+        instagram: bool = False,
+    ) -> SocialPublishResult:
         if instagram:
-            return self._publish_instagram(body=body, link_url=link_url, image_url=image_url)
+            return self._publish_instagram(
+                body=body,
+                link_url=link_url,
+                image_url=image_url,
+                image_bytes=image_bytes,
+            )
+        if image_bytes:
+            return self._publish_page_photo(body=body, image_bytes=image_bytes)
         return self._publish_page(body=body, link_url=link_url)
 
     def _publish_page(self, *, body: str, link_url: str) -> SocialPublishResult:
         data = {"message": body, "published": "true", "access_token": self._token}
-        if link_url.strip():
-            data["link"] = link_url.strip()
+        link = link_url.strip()
+        if link and provider_can_fetch(link):
+            data["link"] = link
         return self._post(f"{META_GRAPH}/{self._page_id}/feed", data, provider="facebook")
 
-    def _publish_instagram(self, *, body: str, link_url: str, image_url: str) -> SocialPublishResult:
+    def _publish_page_photo(self, *, body: str, image_bytes: bytes) -> SocialPublishResult:
+        return self._upload_photo(image_bytes, published=True, message=body)
+
+    def _publish_instagram(self, *, body: str, link_url: str, image_url: str, image_bytes: bytes = b"") -> SocialPublishResult:
         if not self._instagram_id:
             return SocialPublishResult(
                 ok=False,
@@ -306,14 +350,22 @@ class MetaSocialPublisher:
                 is_mock=False,
                 reason="NOT_CONFIGURED. Set INSTAGRAM_BUSINESS_ACCOUNT_ID.",
             )
-        if not image_url.strip():
+        usable = image_url.strip()
+        if usable and not instagram_can_fetch(usable):
+            usable = ""
+        if not usable and image_bytes:
+            hosted, problem = self._host_image(image_bytes)
+            if problem:
+                return SocialPublishResult(ok=False, provider="instagram", is_mock=False, reason=problem)
+            usable = hosted
+        if not usable:
             return SocialPublishResult(
                 ok=False,
                 provider="instagram",
                 is_mock=False,
                 reason="Instagram posts require a public image URL.",
             )
-        if not instagram_can_fetch(image_url):
+        if not instagram_can_fetch(usable):
             return SocialPublishResult(
                 ok=False,
                 provider="instagram",
@@ -322,7 +374,7 @@ class MetaSocialPublisher:
             )
         created = self._post(
             f"{META_GRAPH}/{self._instagram_id}/media",
-            {"image_url": image_url.strip(), "caption": instagram_caption(body, link_url), "access_token": self._token},
+            {"image_url": usable, "caption": instagram_caption(body, link_url), "access_token": self._token},
             provider="instagram",
         )
         if not created.ok:
@@ -332,6 +384,75 @@ class MetaSocialPublisher:
             {"creation_id": created.external_id, "access_token": self._token},
             provider="instagram",
         )
+
+    def _upload_photo(self, data: bytes, *, published: bool, message: str = "") -> SocialPublishResult:
+        form = {"published": "true" if published else "false", "access_token": self._token}
+        if published and message:
+            form["message"] = message
+        if not published:
+            form["temporary"] = "true"
+        owns = self._client is None
+        client = self._client or httpx.Client(timeout=60.0)
+        try:
+            response = client.post(
+                f"{META_GRAPH}/{self._page_id}/photos",
+                data=form,
+                files={"source": ("banner.png", data, "image/png")},
+            )
+            if response.status_code >= 400:
+                return SocialPublishResult(
+                    ok=False,
+                    provider="facebook",
+                    is_mock=False,
+                    reason=_meta_refusal("Meta refused the image", response),
+                )
+            payload = response.json() if response.content else {}
+            external_id = str(payload.get("post_id") or payload.get("id") or "")
+            if not external_id:
+                return SocialPublishResult(ok=False, provider="facebook", is_mock=False, reason="Meta returned no post id.")
+            permalink = self._permalink(external_id=external_id, provider="facebook") if published else ""
+            return SocialPublishResult(
+                ok=True,
+                provider="facebook",
+                is_mock=False,
+                external_id=external_id,
+                permalink=permalink or public_post_url("facebook", external_id),
+            )
+        except httpx.HTTPError:
+            return SocialPublishResult(ok=False, provider="facebook", is_mock=False, reason="Meta network error.")
+        finally:
+            if owns:
+                client.close()
+
+    def _host_image(self, data: bytes) -> tuple[str, str]:
+        owns = self._client is None
+        client = self._client or httpx.Client(timeout=60.0)
+        try:
+            response = client.post(
+                f"{META_GRAPH}/{self._page_id}/photos",
+                data={"published": "false", "temporary": "true", "access_token": self._token},
+                files={"source": ("banner.png", data, "image/png")},
+            )
+            if response.status_code >= 400:
+                return "", _meta_refusal("Meta refused the image", response)
+            photo_id = str((response.json() if response.content else {}).get("id") or "")
+            if not photo_id:
+                return "", "Meta returned no image id."
+            fetched = client.get(
+                f"{META_GRAPH}/{photo_id}",
+                params={"fields": "images", "access_token": self._token},
+            )
+            if fetched.status_code >= 400:
+                return "", _meta_refusal("Meta refused the image", fetched)
+            url = _largest_image_url(fetched.json() if fetched.content else {})
+            if not url:
+                return "", "Meta did not return a public image address."
+            return url, ""
+        except httpx.HTTPError:
+            return "", "Meta network error."
+        finally:
+            if owns:
+                client.close()
 
     def update_message(self, *, external_id: str, body: str) -> SocialPublishResult:
         if not external_id.strip():
@@ -450,6 +571,28 @@ def posting_gaps(settings: Settings, channel: str) -> list[str]:
             missing.append("WHATSAPP_ACCESS_TOKEN")
         return missing
     return ["channel"]
+
+
+def _largest_image_url(payload: dict) -> str:
+    images = payload.get("images") or []
+    if not isinstance(images, list):
+        return ""
+    best = ""
+    best_width = -1
+    for item in images:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "")
+        if not source.startswith("https://"):
+            continue
+        try:
+            width = int(item.get("width") or 0)
+        except (TypeError, ValueError):
+            width = 0
+        if width >= best_width:
+            best = source
+            best_width = width
+    return best
 
 
 def _meta_refusal(prefix: str, response: httpx.Response) -> str:

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from uuid import UUID
 
 import httpx
@@ -72,14 +74,27 @@ class S3CompatibleObjectStorageProvider:
             self._client().put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=content_type)
             return key
         except Exception:
-            httpx.put(f"{self.endpoint}/{self.bucket}/{key}", content=data, timeout=15.0).raise_for_status()
+            response = self._put_http(key, data, content_type=content_type)
+            if response.status_code == 404 and b"NoSuchBucket" in response.content:
+                self._create_bucket()
+                response = self._put_http(key, data, content_type=content_type)
+            response.raise_for_status()
             return key
+
+    def _put_http(self, key: str, data: bytes, *, content_type: str) -> httpx.Response:
+        url, headers = self._signed("PUT", key, data, content_type=content_type)
+        return httpx.put(url, content=data, headers=headers, timeout=15.0)
+
+    def _create_bucket(self) -> None:
+        url, headers = self._signed_uri("PUT", "/" + quote(self.bucket, safe=""), b"")
+        httpx.put(url, content=b"", headers=headers, timeout=15.0).raise_for_status()
 
     def get(self, key: str) -> bytes:
         try:
             return self._client().get_object(Bucket=self.bucket, Key=key)["Body"].read()
         except Exception:
-            response = httpx.get(f"{self.endpoint}/{self.bucket}/{key}", timeout=15.0)
+            url, headers = self._signed("GET", key, b"")
+            response = httpx.get(url, headers=headers, timeout=15.0)
             response.raise_for_status()
             return response.content
 
@@ -88,7 +103,48 @@ class S3CompatibleObjectStorageProvider:
             self._client().head_object(Bucket=self.bucket, Key=key)
             return True
         except Exception:
-            return False
+            try:
+                url, headers = self._signed("HEAD", key, b"")
+                httpx.head(url, headers=headers, timeout=15.0).raise_for_status()
+                return True
+            except Exception:
+                return False
+
+    def _signed(self, method: str, key: str, data: bytes, *, content_type: str | None = None) -> tuple[str, dict[str, str]]:
+        canonical_uri = "/" + quote(self.bucket, safe="") + "/" + quote(key, safe="/")
+        return self._signed_uri(method, canonical_uri, data, content_type=content_type)
+
+    def _signed_uri(
+        self, method: str, canonical_uri: str, data: bytes, *, content_type: str | None = None
+    ) -> tuple[str, dict[str, str]]:
+        now = datetime.now(UTC)
+        amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+        datestamp = now.strftime("%Y%m%d")
+        payload_hash = hashlib.sha256(data).hexdigest()
+        parts = urlsplit(self.endpoint)
+        header_map = {
+            "host": parts.netloc,
+            "x-amz-content-sha256": payload_hash,
+            "x-amz-date": amz_date,
+        }
+        if content_type:
+            header_map["content-type"] = content_type
+        names = sorted(header_map)
+        canonical_headers = "".join(f"{name}:{header_map[name]}\n" for name in names)
+        signed_headers = ";".join(names)
+        canonical_request = "\n".join(
+            [method, canonical_uri, "", canonical_headers, signed_headers, payload_hash]
+        )
+        scope = f"{datestamp}/us-east-1/s3/aws4_request"
+        string_to_sign = "\n".join(
+            ["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canonical_request.encode()).hexdigest()]
+        )
+        signature = hmac.new(_aws_signing_key(self.secret_key, datestamp), string_to_sign.encode(), hashlib.sha256).hexdigest()
+        header_map["Authorization"] = (
+            f"AWS4-HMAC-SHA256 Credential={self.access_key}/{scope}, "
+            f"SignedHeaders={signed_headers}, Signature={signature}"
+        )
+        return f"{parts.scheme}://{parts.netloc}{canonical_uri}", header_map
 
     def presign(self, key: str, *, expires_seconds: int = 300) -> str:
         try:
@@ -133,3 +189,10 @@ def get_object_storage() -> ObjectStorageProvider:
 
 def content_checksum(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _aws_signing_key(secret: str, datestamp: str) -> bytes:
+    date_key = hmac.new(f"AWS4{secret}".encode(), datestamp.encode(), hashlib.sha256).digest()
+    region_key = hmac.new(date_key, b"us-east-1", hashlib.sha256).digest()
+    service_key = hmac.new(region_key, b"s3", hashlib.sha256).digest()
+    return hmac.new(service_key, b"aws4_request", hashlib.sha256).digest()

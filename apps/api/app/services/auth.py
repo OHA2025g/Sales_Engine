@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
+    hash_password,
     hash_refresh_token,
     new_refresh_token,
+    password_needs_rehash,
     verify_password,
 )
 from app.db.tenant_context import (
@@ -101,6 +103,8 @@ def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     set_tenant_context(db, user.tenant_id)
     clear_lookup_context(db)
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(password)
     user.last_login_at = datetime.now(UTC)
     raw, _row = _issue_refresh(db, user)
     write_audit(

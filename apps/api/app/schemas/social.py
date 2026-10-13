@@ -18,6 +18,40 @@ class SocialDraftOut(APIModel):
     link_url: str
 
 
+class SocialBriefIn(APIModel):
+    headline: str = Field(min_length=1, max_length=200)
+    keyword: str = Field(min_length=1, max_length=200)
+    ranking_parameter: str = Field(min_length=1, max_length=500)
+    snippet: str = Field(min_length=1, max_length=1000)
+    context: str = Field(min_length=1, max_length=300)
+
+
+class SocialComposeOut(APIModel):
+    body: str
+
+
+class SocialCreativeIn(SocialBriefIn):
+    body: str = Field(min_length=1, max_length=3000)
+
+
+class SocialCreativeOut(APIModel):
+    url: str
+    note: str = ""
+    kind: str = "image"
+
+
+class SocialSubmissionIn(SocialCreativeIn):
+    image_url: str = ""
+    video_url: str = ""
+    form_key_id: UUID | None = None
+    channels: list[str] = Field(min_length=1, max_length=4)
+
+
+class SocialSubmissionOut(APIModel):
+    approval_id: UUID
+    posts: list["SocialPostOut"] = Field(default_factory=list)
+
+
 class SocialExtraLink(APIModel):
     label: str = Field(default="", max_length=80)
     url: str = Field(default="", max_length=500)
@@ -44,8 +78,14 @@ class SocialPostOut(APIModel):
     id: UUID
     channel: str
     body: str
+    headline: str = ""
+    keyword: str = ""
+    ranking_parameter: str = ""
+    snippet: str = ""
+    context: str = ""
     link_url: str
     image_url: str
+    video_url: str = ""
     extra_links: list[SocialExtraLink] = Field(default_factory=list)
     form_key_id: UUID | None = None
     form_name: str = ""
@@ -83,3 +123,6 @@ class SocialChannelStatus(APIModel):
     mode: str
     configured: bool
     missing: list[str]
+
+
+SocialSubmissionOut.model_rebuild()

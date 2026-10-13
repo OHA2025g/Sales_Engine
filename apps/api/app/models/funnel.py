@@ -122,6 +122,7 @@ class PublicFormKey(Base, TenantOwnedMixin):
     __tablename__ = "public_form_keys"
 
     name: Mapped[str] = mapped_column(String(120), default="website", nullable=False)
+    schema_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     token_encrypted: Mapped[str] = mapped_column(Text, default="", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)

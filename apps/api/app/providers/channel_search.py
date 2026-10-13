@@ -8,6 +8,8 @@ no hits and does not invent posts.
 from __future__ import annotations
 
 import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -18,6 +20,9 @@ from app.core.config import get_settings
 
 CHANNELS = ("google", "facebook", "instagram", "linkedin")
 RESULT_LIMIT = 10
+_APIFY_POLL_SECONDS = 4
+_APIFY_POLL_LIMIT = 45
+_APIFY_STOPPED = frozenset({"FAILED", "TIMED-OUT", "TIMING-OUT", "ABORTED"})
 NO_MATCH_REASON = "No public posts matched this keyword."
 _STOPWORDS = {
     "a",
@@ -382,11 +387,11 @@ class ApifyChannelSearch:
         self._actor_id = actor_id.strip().replace("/", "~")
         self._client = client
 
-    def search(self, query: str) -> ChannelSearchOutcome:
+    def search(self, query: str, on_progress: Callable[[ChannelSearchOutcome], None] | None = None) -> ChannelSearchOutcome:
         owns_client = self._client is None
-        client = self._client or httpx.Client(timeout=150.0)
+        client = self._client or httpx.Client(timeout=30.0)
         try:
-            grouped, reason, mode = self._run(client, query)
+            grouped, reason, mode = self._run(client, query, on_progress)
         finally:
             if owns_client:
                 client.close()
@@ -405,7 +410,12 @@ class ApifyChannelSearch:
         ]
         return ChannelSearchOutcome(provider="apify", channels=channels)
 
-    def _run(self, client: Any, query: str) -> tuple[dict[str, list[ChannelHit]], str, str]:
+    def _run(
+        self,
+        client: Any,
+        query: str,
+        on_progress: Callable[[ChannelSearchOutcome], None] | None = None,
+    ) -> tuple[dict[str, list[ChannelHit]], str, str]:
         empty = {name: [] for name in CHANNELS}
         headers = {"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"}
         try:
@@ -418,7 +428,7 @@ class ApifyChannelSearch:
                     "saveHtml": False,
                     "saveHtmlToKeyValueStore": False,
                 },
-                params={"waitForFinish": 90},
+                params={"waitForFinish": 0},
             )
         except httpx.HTTPError:
             return empty, "Apify search could not be reached. No posts were invented.", "failed"
@@ -428,13 +438,14 @@ class ApifyChannelSearch:
         if not isinstance(body, dict):
             body = {}
         dataset_id, status, message = _apify_run_state(body)
-        if status not in {"SUCCEEDED", "READY"} or not dataset_id:
+        run_id = str(body.get("id") or "")
+        polls = 0
+        while status != "SUCCEEDED" and run_id and status not in _APIFY_STOPPED and polls < _APIFY_POLL_LIMIT:
+            if polls:
+                time.sleep(_APIFY_POLL_SECONDS)
+            polls += 1
             try:
-                wait = client.get(
-                    f"https://api.apify.com/v2/actor-runs/{body.get('id')}",
-                    headers=headers,
-                    params={"waitForFinish": 90},
-                )
+                wait = client.get(f"https://api.apify.com/v2/actor-runs/{run_id}", headers=headers)
             except httpx.HTTPError:
                 return empty, "Apify search could not be reached. No posts were invented.", "failed"
             if getattr(wait, "status_code", 200) >= 400:
@@ -442,6 +453,9 @@ class ApifyChannelSearch:
             waited = _json_dict(wait).get("data") or {}
             if isinstance(waited, dict):
                 dataset_id, status, message = _apify_run_state(waited)
+                run_id = str(waited.get("id") or run_id)
+            if dataset_id and status != "SUCCEEDED":
+                self._report_progress(client, headers, dataset_id, query, on_progress)
         if status != "SUCCEEDED" or not dataset_id:
             detail = f" {message}" if message else ""
             return empty, _redact(f"Apify search ended {status or 'unknown'}.{detail} No posts were invented.", self._token), "failed"
@@ -459,6 +473,53 @@ class ApifyChannelSearch:
         if not isinstance(rows, list):
             return empty, "Apify results were not a list. No posts were invented.", "failed"
         return parse_apify_items(rows), "No public posts were returned for this keyword.", "live"
+
+    def _report_progress(
+        self,
+        client: Any,
+        headers: dict[str, str],
+        dataset_id: str,
+        query: str,
+        on_progress: Callable[[ChannelSearchOutcome], None] | None,
+    ) -> None:
+        if on_progress is None:
+            return
+        rows = _dataset_rows(client, headers, dataset_id)
+        if not rows:
+            return
+        seen: set[str] = set()
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            channel = channel_from_term(_apify_term(item))
+            if channel:
+                seen.add(channel)
+        if not seen:
+            return
+        grouped = {name: relevant_hits(query, hits) for name, hits in parse_apify_items(rows).items()}
+        channels: list[ChannelOutcome] = []
+        for name in CHANNELS:
+            if name in seen:
+                hits = grouped[name]
+                channels.append(ChannelOutcome(name, "live", "apify", "" if hits else NO_MATCH_REASON, hits))
+            else:
+                channels.append(ChannelOutcome(name, "running", "apify", "Searching this channel.", []))
+        on_progress(ChannelSearchOutcome(provider="apify", channels=channels))
+
+
+def _dataset_rows(client: Any, headers: dict[str, str], dataset_id: str) -> list[Any] | None:
+    try:
+        items = client.get(
+            f"https://api.apify.com/v2/datasets/{dataset_id}/items",
+            headers=headers,
+            params={"limit": 80},
+        )
+    except httpx.HTTPError:
+        return None
+    if getattr(items, "status_code", 200) >= 400:
+        return None
+    rows = items.json() if hasattr(items, "json") else []
+    return rows if isinstance(rows, list) else None
 
 
 class GeminiChannelSearch:

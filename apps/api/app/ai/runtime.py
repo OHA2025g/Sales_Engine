@@ -2,10 +2,12 @@ import json
 import re
 from uuid import UUID
 
+import httpx
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.providers import get_llm_provider
+from app.ai.providers import CompletionResult, get_llm_provider
 from app.ai.rag import retrieve
 from app.ai.tools import ToolContext, run_tool
 from app.models.ai import (
@@ -323,8 +325,25 @@ def draft_email(
         payload = {"error": "unsupported entity"}
     system, version = _prompt(db, tenant_id, "email_draft", "Draft a professional email. Do not send.")
     llm = get_llm_provider()
-    result = llm.complete(json.dumps({"intent": intent, "record": payload}, default=str), system=system)
-    _log_usage(db, tenant_id, "email_draft", version, result)
+    prompt = json.dumps({"intent": intent, "record": payload}, default=str)
+    email_note = ""
+    try:
+        result = llm.complete(prompt, system=system)
+        if not (result.text or "").strip() or result.text.startswith("[NOT_CONFIGURED"):
+            raise RuntimeError("The model did not return a draft.")
+        _log_usage(db, tenant_id, "email_draft", version, result)
+    except (RuntimeError, httpx.HTTPError, OSError):
+        result = CompletionResult(
+            text=_draft_from_record(payload, whatsapp=False),
+            provider="record",
+            model="",
+            input_tokens=0,
+            output_tokens=0,
+            latency_ms=0,
+            is_mock=True,
+            estimated_cost=0.0,
+        )
+        email_note = "Written from the lead record. The model did not return a draft."
     rec = AIRecommendation(
         tenant_id=tenant_id,
         created_by=actor_id,
@@ -400,6 +419,115 @@ def draft_email(
         "approval_id": approval_id,
         "provider": result.provider,
         "is_mock": result.is_mock,
+        "note": email_note,
+    }
+
+
+def _draft_from_record(payload: object, *, whatsapp: bool) -> str:
+    record = payload if isinstance(payload, dict) else {}
+    name = str(record.get("name") or "there")
+    company = str(record.get("company_name") or "your team")
+    title = str(record.get("title") or "your role")
+    source = str(record.get("source") or "our records")
+    if whatsapp:
+        first = name.split(" ")[0]
+        return (
+            f"Hello {first}, this is a short note about {company}. "
+            "If a brief conversation would help, reply to this message. "
+            "This is a draft and has not been sent."
+        )
+    return (
+        "Subject: A short introduction\n\n"
+        f"Hello {name},\n\n"
+        f"I am writing because {company} is on our list from {source}. "
+        f"If it is useful, I would like to understand what you are working on as {title} "
+        "and whether a short conversation is worth your time.\n\n"
+        "This is a draft. It has not been sent.\n"
+    )
+
+
+def draft_whatsapp(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    permissions: set[str],
+    entity_type: str,
+    entity_id: UUID,
+) -> dict:
+    if entity_type != "lead":
+        raise ValueError("WhatsApp drafts are written for a lead.")
+    ctx = ToolContext(db=db, tenant_id=tenant_id, actor_id=actor_id, permissions=permissions)
+    payload = run_tool(ctx, "get_lead", {"lead_id": str(entity_id)})
+    if isinstance(payload, dict) and payload.get("opt_out"):
+        body = "Suppressed: lead is opted out. No WhatsApp message was drafted for send."
+        rec = AIRecommendation(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            entity_type=entity_type,
+            entity_id=str(entity_id),
+            kind="whatsapp_draft",
+            title="Suppressed",
+            body=body,
+            status="blocked",
+        )
+        db.add(rec)
+        db.commit()
+        return {
+            "recommendation_id": rec.id,
+            "subject": "",
+            "body": body,
+            "approval_id": None,
+            "provider": "policy",
+            "is_mock": True,
+            "note": "Do not send. The lead is opted out.",
+        }
+    system, version = _prompt(
+        db,
+        tenant_id,
+        "whatsapp_draft",
+        "Write one short WhatsApp message under 400 characters. Use only facts in the record. Do not send it.",
+    )
+    prompt = json.dumps({"intent": "first_touch", "record": payload}, default=str)
+    llm = get_llm_provider()
+    note = ""
+    try:
+        result = llm.complete(prompt, system=system)
+        text = (result.text or "").strip()
+        if not text or text.startswith("[NOT_CONFIGURED"):
+            raise RuntimeError("The model did not return a draft.")
+        _log_usage(db, tenant_id, "whatsapp_draft", version, result)
+        body = result.text
+        provider = result.provider
+        is_mock = result.is_mock
+    except (RuntimeError, httpx.HTTPError, OSError):
+        body = _draft_from_record(payload, whatsapp=True)
+        provider = "record"
+        is_mock = True
+        note = "Written from the lead record. The model did not return a draft."
+    if isinstance(payload, dict) and not payload.get("consent_whatsapp"):
+        hold = "WhatsApp consent is not on file. Keep this as a draft."
+        note = f"{note} {hold}".strip()
+    rec = AIRecommendation(
+        tenant_id=tenant_id,
+        created_by=actor_id,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        kind="whatsapp_draft",
+        title="WhatsApp draft (first touch)",
+        body=body,
+        status="draft",
+    )
+    db.add(rec)
+    db.commit()
+    return {
+        "recommendation_id": rec.id,
+        "subject": "",
+        "body": body,
+        "approval_id": None,
+        "provider": provider,
+        "is_mock": is_mock,
+        "note": note,
     }
 
 

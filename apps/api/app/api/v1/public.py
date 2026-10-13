@@ -17,7 +17,7 @@ from app.schemas.crm import LeadOut, LeadScoreOut
 from app.services.acquisition import capture_inbound, hold_interest, interest_is_eligible
 from app.services.crm import latest_lead_score
 from app.services.orchestrator import process_pending_events
-from app.services.public_forms import resolve_form_key
+from app.services.public_forms import loads_form_fields, public_form_inputs, resolve_form_key
 from app.services.social_media import read_social_image
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -36,7 +36,10 @@ def embeddable_form(token: str, request: Request, db: Annotated[Session, Depends
     enforce_rate_limit(key=f"public-form:{request.client.host if request.client else 'unknown'}", limit=60, window_seconds=60)
     key = resolve_form_key(db, token)
     title = html.escape((key.name or "").strip() or "Tell us what you need")
+    fields = loads_form_fields(key.schema_json)
+    inputs, labels = public_form_inputs(fields)
     endpoint = json.dumps(f"{str(request.base_url).rstrip('/')}/api/v1/public/forms/{token}/capture")
+    label_json = json.dumps(labels).replace("{", "{{").replace("}", "}}")
     query = request.query_params
     hidden = {
         "source": query.get("source") or "public_form",
@@ -48,8 +51,11 @@ def embeddable_form(token: str, request: Request, db: Annotated[Session, Depends
         "ad_id": query.get("ad_id") or "",
     }
     hidden_html = "".join(
-        f'<input type="hidden" name="{html.escape(key)}" value="{html.escape(value)}">' for key, value in hidden.items()
+        f'<input type="hidden" name="{html.escape(name)}" value="{html.escape(value)}">' for name, value in hidden.items()
     )
+    title = title.replace("{", "{{").replace("}", "}}")
+    hidden_html = hidden_html.replace("{", "{{").replace("}", "}}")
+    inputs = inputs.replace("{", "{{").replace("}", "}}")
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
 <style>
@@ -58,7 +64,7 @@ main{{max-width:32rem;margin:0 auto;padding:2rem 1.25rem 3rem}}
 h1{{font-size:1.6rem;margin:0 0 .5rem}}
 p{{line-height:1.5}}
 label{{display:block;margin:1rem 0 .35rem}}
-input,textarea{{width:100%;box-sizing:border-box;padding:.7rem;border:1px solid #293346;border-radius:8px;background:#101722;color:#eef2fa}}
+input,textarea,select{{width:100%;box-sizing:border-box;padding:.7rem;border:1px solid #293346;border-radius:8px;background:#101722;color:#eef2fa}}
 button{{margin-top:1.25rem;width:100%;padding:.8rem;border:0;border-radius:8px;background:#99a5ff;color:#101722;font-weight:650}}
 .row{{display:flex;gap:.75rem}}
 .row label{{flex:1}}
@@ -70,13 +76,7 @@ button{{margin-top:1.25rem;width:100%;padding:.8rem;border:0;border-radius:8px;b
 <p>Share a few details and what you want. If the request is eligible, it becomes a lead for the team to continue.</p>
 <form id="agrayian-form">
 {hidden_html}
-<div class="row"><label>First name<input name="first_name" required autocomplete="given-name"></label><label>Last name<input name="last_name" required autocomplete="family-name"></label></div>
-<label>Work email<input name="email" type="email" required autocomplete="email"></label>
-<label>Phone<input name="phone" type="tel" autocomplete="tel"></label>
-<label>Company<input name="company_name" autocomplete="organization"></label>
-<label>Role<input name="title" autocomplete="organization-title"></label>
-<label>What do you want?<textarea name="request_note" required rows="5" placeholder="Describe the product or service you are interested in, and what you want next."></textarea></label>
-<label class="check"><input type="checkbox" name="consent_email" value="true" required> I am interested and agree to be contacted about this request.</label>
+{inputs}
 <button type="submit">Send my interest</button>
 <p id="status"></p>
 </form>
@@ -86,6 +86,15 @@ button{{margin-top:1.25rem;width:100%;padding:.8rem;border:0;border-radius:8px;b
 document.getElementById("agrayian-form").addEventListener("submit", async (event) => {{
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target).entries());
+  const labels = {label_json};
+  const extras = [];
+  for (const key of Object.keys(data)) {{
+    if (!key.startsWith("custom_")) continue;
+    const value = String(data[key] || "").trim();
+    if (value) extras.push((labels[key] || "Note") + ": " + value);
+    delete data[key];
+  }}
+  if (extras.length) data.request_note = [data.request_note, extras.join("\\n")].filter(Boolean).join("\\n");
   data.consent_email = data.consent_email === "true";
   const response = await fetch({endpoint}, {{
     method: "POST",
@@ -116,7 +125,7 @@ def public_media(token: str, request: Request, db: Annotated[Session, Depends(ge
 def public_form_meta(token: str, request: Request, db: Annotated[Session, Depends(get_db)]) -> Envelope[dict]:
     enforce_rate_limit(key=f"public-form-meta:{request.client.host if request.client else 'unknown'}", limit=60, window_seconds=60)
     key = resolve_form_key(db, token)
-    return Envelope(data={"name": key.name})
+    return Envelope(data={"name": key.name, "fields": loads_form_fields(key.schema_json)})
 
 
 @router.post("/forms/{token}/capture", response_model=Envelope[CaptureResult])

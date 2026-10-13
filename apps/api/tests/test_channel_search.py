@@ -1,3 +1,4 @@
+from app.api.v1.channel_search import finish_channel_search_task
 from app.core.config import get_settings
 from app.providers.channel_search import (
     ApifyChannelSearch,
@@ -10,6 +11,7 @@ from app.providers.channel_search import (
     is_channel_post,
     parse_apify_items,
 )
+from app.services.snippet_expand import SnippetUnavailable, assert_public_url, choose_detail
 from tests.conftest import login
 
 
@@ -173,6 +175,69 @@ def test_apify_search_reads_ranked_dataset_items() -> None:
     assert outcome.channels[0].mode == "live"
 
 
+def test_apify_waits_when_the_run_is_still_ready() -> None:
+    class _Client:
+        def post(self, url: str, headers: dict | None = None, json: dict | None = None, params: dict | None = None):
+            _ = (url, headers, json, params)
+            return _Response({"data": {"id": "run-1", "status": "READY", "defaultDatasetId": "data-1"}})
+
+        def get(self, url: str, headers: dict | None = None, params: dict | None = None):
+            _ = (headers, params)
+            if "/actor-runs/" in url:
+                return _Response({"data": {"id": "run-1", "status": "SUCCEEDED", "defaultDatasetId": "data-1"}})
+            return _Response(
+                [
+                    {
+                        "searchQuery": {"term": "warehouse robots"},
+                        "organicResults": [{"title": "Web", "url": "https://example.com/a", "description": "warehouse robots", "position": 1}],
+                    }
+                ]
+            )
+
+    outcome = ApifyChannelSearch("token", "apify/google-search-scraper", client=_Client()).search("warehouse robots")
+    assert outcome.channels[0].mode == "live"
+    assert outcome.channels[0].hits[0].title == "Web"
+    assert "ended READY" not in outcome.channels[0].reason
+
+
+def test_apify_reports_a_channel_before_the_run_finishes(monkeypatch) -> None:
+    monkeypatch.setattr("app.providers.channel_search.time.sleep", lambda _seconds: None)
+    calls = {"run": 0}
+    seen: list[dict[str, str]] = []
+
+    class _Client:
+        def post(self, url: str, headers: dict | None = None, json: dict | None = None, params: dict | None = None):
+            _ = (url, headers, json, params)
+            return _Response({"data": {"id": "run-1", "status": "RUNNING", "defaultDatasetId": "data-1"}})
+
+        def get(self, url: str, headers: dict | None = None, params: dict | None = None):
+            _ = (headers, params)
+            if "/actor-runs/" in url:
+                calls["run"] += 1
+                status = "RUNNING" if calls["run"] == 1 else "SUCCEEDED"
+                return _Response({"data": {"id": "run-1", "status": status, "defaultDatasetId": "data-1"}})
+            return _Response(
+                [
+                    {
+                        "searchQuery": {"term": "warehouse robots"},
+                        "organicResults": [{"title": "Web", "url": "https://example.com/a", "description": "warehouse robots", "position": 1}],
+                    }
+                ]
+            )
+
+    def progress(outcome: ChannelSearchOutcome) -> None:
+        seen.append({channel.channel: channel.mode for channel in outcome.channels})
+
+    outcome = ApifyChannelSearch("token", "apify/google-search-scraper", client=_Client()).search(
+        "warehouse robots",
+        on_progress=progress,
+    )
+    assert seen[0]["google"] == "live"
+    assert seen[0]["facebook"] == "running"
+    assert outcome.channels[0].hits[0].title == "Web"
+    assert all(channel.mode == "live" for channel in outcome.channels)
+
+
 def test_unrelated_facebook_posts_are_removed() -> None:
     class _Client:
         def post(self, url: str, headers: dict | None = None, json: dict | None = None, params: dict | None = None):
@@ -265,10 +330,118 @@ def test_search_stores_provider_hits_without_calling_a_network(client, monkeypat
     assert denied.status_code == 401
 
 
+def test_background_search_returns_before_the_provider_finishes(client, monkeypatch) -> None:
+    class _Provider:
+        def search(self, query: str) -> ChannelSearchOutcome:
+            assert query == "real estate revenue"
+            return ChannelSearchOutcome(
+                provider="apify",
+                channels=[
+                    ChannelOutcome("google", "live", "apify", "", [ChannelHit(1, "Real estate revenue", "https://example.com/re", "revenue")]),
+                    ChannelOutcome("facebook", "live", "apify", "", []),
+                    ChannelOutcome("instagram", "live", "apify", "", []),
+                    ChannelOutcome("linkedin", "live", "apify", "", []),
+                ],
+            )
+
+    queued: list[tuple[str, str]] = []
+
+    def capture(search_id: str, tenant_id: str) -> None:
+        queued.append((search_id, tenant_id))
+
+    monkeypatch.setenv("CHANNEL_SEARCH_BACKGROUND", "true")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.services.channel_search.get_channel_search_provider", lambda: _Provider())
+    monkeypatch.setattr(finish_channel_search_task, "delay", capture)
+    headers = login(client)
+    try:
+        created = client.post("/api/v1/channel-search", headers=headers, json={"query": "real estate revenue"})
+        assert created.status_code == 200
+        body = created.json()["data"]
+        assert body["status"] == "running"
+        assert body["channels"][0]["mode"] == "running"
+        assert queued
+        finish_channel_search_task(*queued[0])
+        listed = client.get("/api/v1/channel-search", headers=headers)
+        saved = next(item for item in listed.json()["data"] if item["id"] == body["id"])
+        assert saved["status"] == "partial"
+        assert saved["channels"][0]["hits"][0]["title"] == "Real estate revenue"
+    finally:
+        monkeypatch.undo()
+        get_settings.cache_clear()
+
+
 def test_short_query_is_rejected(client) -> None:
     headers = login(client)
     rejected = client.post("/api/v1/channel-search", headers=headers, json={"query": "a"})
     assert rejected.status_code == 422
+
+
+def test_choose_detail_continues_the_stored_sentence() -> None:
+    stored = "The curriculum covers management basics ...Read more"
+    body = "Intro. The curriculum covers management basics and then a supervised internship across two years."
+    detail = choose_detail(stored, "", body)
+    assert "supervised internship" in detail
+    assert "Read more" not in detail
+
+
+def test_private_result_address_is_refused() -> None:
+    try:
+        assert_public_url("http://127.0.0.1/secret")
+    except SnippetUnavailable:
+        return
+    raise AssertionError("A loopback address was accepted")
+
+
+def test_read_more_returns_the_longer_page_text(client, monkeypatch) -> None:
+    class _Provider:
+        def search(self, query: str) -> ChannelSearchOutcome:
+            assert query == "curriculum"
+            return ChannelSearchOutcome(
+                provider="google_cse",
+                channels=[
+                    ChannelOutcome(
+                        "google",
+                        "live",
+                        "google_cse",
+                        "",
+                        [
+                            ChannelHit(
+                                1,
+                                "PGDM curriculum",
+                                "https://example.com/pgdm",
+                                "The curriculum covers management basics ...Read more",
+                            )
+                        ],
+                    ),
+                    ChannelOutcome("facebook", "live", "google_cse", "", []),
+                    ChannelOutcome("instagram", "live", "google_cse", "", []),
+                    ChannelOutcome("linkedin", "live", "google_cse", "", []),
+                ],
+            )
+
+    html = (
+        "<html><body><p>The curriculum covers management basics and then a supervised internship "
+        "across two years.</p></body></html>"
+    )
+    monkeypatch.setattr("app.services.channel_search.get_channel_search_provider", lambda: _Provider())
+    monkeypatch.setattr("app.services.snippet_expand.fetch_page_html", lambda url, client=None: html)
+    headers = login(client)
+    created = client.post("/api/v1/channel-search", headers=headers, json={"query": "curriculum"})
+    assert created.status_code == 200
+    expanded = client.post(
+        "/api/v1/channel-search/snippet",
+        headers=headers,
+        json={"url": "https://example.com/pgdm"},
+    )
+    assert expanded.status_code == 200
+    assert "supervised internship" in expanded.json()["data"]["text"]
+    missing = client.post(
+        "/api/v1/channel-search/snippet",
+        headers=headers,
+        json={"url": "https://example.com/other"},
+    )
+    assert missing.status_code == 404
 
 
 def test_gemini_provider_does_not_store_ungrounded_text() -> None:

@@ -10,11 +10,15 @@ import { useAuth } from "@/lib/auth";
 import { LEAD_STATUSES } from "@/lib/constants";
 import { fullName, labelize } from "@/lib/format";
 import type { Lead } from "@/lib/types";
-import { api } from "@agrayian/sdk";
+import { ApiError, api } from "@agrayian/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+
+type NextAction = { action?: string; reason?: string; steps?: string[] };
+type WrittenDraft = { subject?: string; body?: string; note?: string };
+type TeamMember = { id: string; name: string; email: string; team_name?: string };
 
 export default function LeadDetailPage() {
   const params = useParams<{ id: string }>();
@@ -24,6 +28,11 @@ export default function LeadDetailPage() {
   const query = useQuery({
     queryKey: ["lead", params.id],
     queryFn: async () => (await api<Lead>(`/api/v1/leads/${params.id}`)).data,
+    enabled: can("leads.read"),
+  });
+  const members = useQuery({
+    queryKey: ["lead-assignees"],
+    queryFn: async () => (await api<TeamMember[]>("/api/v1/leads/assignees")).data ?? [],
     enabled: can("leads.read"),
   });
   const form = useForm<Lead>();
@@ -60,7 +69,39 @@ export default function LeadDetailPage() {
     onSuccess: () => void client.invalidateQueries({ queryKey: ["lead", params.id] }),
   });
   const nba = useMutation({
-    mutationFn: () => api(`/api/v1/leads/${params.id}/nba`, { method: "POST" }),
+    mutationFn: async () => {
+      const guide = await api<NextAction>(`/api/v1/leads/${params.id}/nba`, { method: "POST" });
+      if (!can("ai.draft")) return { guide: guide.data ?? {}, email: null, whatsapp: null, draftError: "" };
+      const [emailResult, whatsappResult] = await Promise.allSettled([
+        api<WrittenDraft>("/api/v1/ai/drafts/email", {
+          method: "POST",
+          body: JSON.stringify({ entity_type: "lead", entity_id: params.id, intent: "first_touch", send: false }),
+        }),
+        api<WrittenDraft>("/api/v1/ai/drafts/whatsapp", {
+          method: "POST",
+          body: JSON.stringify({ entity_type: "lead", entity_id: params.id }),
+        }),
+      ]);
+      const email = emailResult.status === "fulfilled" ? emailResult.value.data ?? null : null;
+      const whatsapp = whatsappResult.status === "fulfilled" ? whatsappResult.value.data ?? null : null;
+      const failed = [emailResult, whatsappResult].filter((item) => item.status === "rejected");
+      const draftError = failed.length
+        ? failed.map((item) => (item.reason instanceof ApiError ? item.reason.message : "A draft could not be written.")).join(" ")
+        : "";
+      return { guide: guide.data ?? {}, email, whatsapp, draftError };
+    },
+  });
+  const assign = useMutation({
+    mutationFn: (ownerId: string) =>
+      api(`/api/v1/leads/${params.id}/assign`, {
+        method: "POST",
+        body: JSON.stringify({ owner_id: ownerId || null }),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["lead", params.id] });
+      void client.invalidateQueries({ queryKey: ["leads"] });
+      void client.invalidateQueries({ queryKey: ["activities", "lead", params.id] });
+    },
   });
   const draft = useMutation({
     mutationFn: () =>
@@ -75,8 +116,10 @@ export default function LeadDetailPage() {
   if (query.isError || !query.data) return <ErrorState message="This lead is not in your tenant." />;
   const lead = query.data;
   const parts = lead.latest_score;
-  const nbaBody = nba.data?.data as { action?: string; reason?: string } | undefined;
-  const draftBody = draft.data?.data as { subject?: string; body?: string } | undefined;
+  const guide = nba.data?.guide;
+  const draftBody = draft.data?.data as WrittenDraft | undefined;
+  const emailDraft = nba.data?.email ?? draftBody ?? null;
+  const whatsappDraft = nba.data?.whatsapp ?? null;
 
   return (
     <div>
@@ -127,6 +170,7 @@ export default function LeadDetailPage() {
           <Line label="Channel" value={lead.channel || "Not recorded"} />
           <Line label="Contact eligibility" value={lead.opt_out ? "Opted out" : lead.consent_email ? "Email permitted · current" : "Consent not recorded"} />
           <Line label="Buying trigger" value={lead.has_buying_trigger ? "Recorded" : "Not recorded"} />
+          <Line label="Assigned to" value={lead.owner_name || "Unassigned"} />
           <div className="ds-flex" style={{ marginTop: 18 }}>
             {lead.account_id ? <Go href={`/accounts/${lead.account_id}`}>Account</Go> : null}
             <Go href="/contacts">Contact</Go>
@@ -149,9 +193,11 @@ export default function LeadDetailPage() {
           <div style={{ marginTop: 16 }}>
             <Go href="/meetings" primary>Record meeting outcome</Go>
           </div>
-          <Button variant="line" onClick={() => nba.mutate()}>Next best action</Button>
-          {nbaBody?.action ? <p>{nbaBody.action}</p> : null}
-          {nbaBody?.reason ? <p className="small muted">{nbaBody.reason}</p> : null}
+          <Button variant="line" disabled={nba.isPending} onClick={() => nba.mutate()}>
+            {nba.isPending ? "Writing…" : "Next best action"}
+          </Button>
+          {guide?.action ? <p>{guide.action}</p> : null}
+          {guide?.reason ? <p className="small muted">{guide.reason}</p> : null}
         </Panel>
       </div>
       <div className="grid gap-4 xl:grid-cols-3 section-gap">
@@ -189,22 +235,75 @@ export default function LeadDetailPage() {
             <li className="flex justify-between"><span className="text-[var(--muted)]">Channel</span>{lead.channel || "—"}</li>
             <li className="flex justify-between"><span className="text-[var(--muted)]">Consent</span>{lead.opt_out ? "opted out" : lead.consent_email ? "email ok" : "none"}</li>
           </ul>
-          <Button variant="line" className="mt-6" onClick={() => nba.mutate()}>
-            Next best action
-          </Button>
-          {nbaBody?.action ? (
-            <p className="mt-3 text-sm leading-6 text-ink">
-              {nbaBody.action}
-              <span className="mt-1 block text-[var(--muted)]">{nbaBody.reason}</span>
+          <Field label="Team member">
+            <Select
+              className="mt-2 w-full"
+              value={lead.owner_id ?? ""}
+              disabled={!can("leads.write") || assign.isPending}
+              onChange={(event) => assign.mutate(event.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {(members.data ?? []).map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}{member.team_name ? ` · ${member.team_name}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {assign.isError ? (
+            <p className="mt-2 text-sm leading-6 text-red-700">
+              {assign.error instanceof ApiError ? assign.error.message : "This lead could not be assigned."}
             </p>
+          ) : null}
+          <Button variant="line" className="mt-6" disabled={nba.isPending} onClick={() => nba.mutate()}>
+            {nba.isPending ? "Writing…" : "Next best action"}
+          </Button>
+          {guide?.action ? (
+            <div className="mt-4">
+              <p className="text-sm leading-6 text-ink">{guide.action}</p>
+              {guide.reason ? <p className="mt-1 text-sm leading-6 text-[var(--muted)]">{guide.reason}</p> : null}
+              {guide.steps && guide.steps.length > 0 ? (
+                <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6">
+                  {guide.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              ) : null}
+            </div>
           ) : null}
         </div>
         <div className="panel p-5">
           <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">Draft</p>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">
-            {draftBody?.subject ? `${draftBody.subject}\n\n` : ""}
-            {draftBody?.body ?? "Drafts are stored. Send waits in Approvals until a live provider exists."}
-          </p>
+          {nba.isPending ? <p className="mt-3 text-sm leading-6 text-[var(--muted)]">Writing the email and the WhatsApp message…</p> : null}
+          {nba.data?.draftError ? <p className="mt-3 text-sm leading-6 text-red-700">{nba.data.draftError}</p> : null}
+          {emailDraft?.body || whatsappDraft?.body ? (
+            <div className="mt-4 space-y-5">
+              {emailDraft?.body ? (
+                <section>
+                  <h3 className="text-sm font-medium text-ink">Email</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+                    {emailDraft.subject && !emailDraft.body.trim().toLowerCase().startsWith("subject:")
+                      ? `${emailDraft.subject}\n\n`
+                      : ""}
+                    {emailDraft.body}
+                  </p>
+                  {emailDraft.note ? <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{emailDraft.note}</p> : null}
+                </section>
+              ) : null}
+              {whatsappDraft?.body ? (
+                <section>
+                  <h3 className="text-sm font-medium text-ink">WhatsApp</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{whatsappDraft.body}</p>
+                  {whatsappDraft.note ? <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{whatsappDraft.note}</p> : null}
+                </section>
+              ) : null}
+              <p className="text-sm leading-6 text-[var(--muted)]">These drafts are stored. Nothing is sent from this page.</p>
+            </div>
+          ) : nba.isPending ? null : (
+            <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+              Click Next best action to write the email and the WhatsApp message. Nothing is sent from here.
+            </p>
+          )}
         </div>
       </div>
       <div className="mt-8 grid gap-4 xl:grid-cols-2">

@@ -31,6 +31,12 @@ class EmailDraftResponse(APIModel):
     approval_id: UUID | None = None
     provider: str
     is_mock: bool
+    note: str = ""
+
+
+class WhatsAppDraftRequest(APIModel):
+    entity_type: str
+    entity_id: UUID
 
 
 class KnowledgeUploadResponse(APIModel):

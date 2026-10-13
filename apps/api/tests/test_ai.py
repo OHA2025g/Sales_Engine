@@ -32,6 +32,25 @@ def test_email_send_queues_approval(client: TestClient) -> None:
     assert approvals
 
 
+def test_next_action_lists_the_work_and_whatsapp_stays_a_draft(client: TestClient) -> None:
+    headers = login(client)
+    leads = client.get("/api/v1/leads", headers=headers).json()["data"]
+    lead = next(row for row in leads if row.get("consent_email") and not row.get("opt_out"))
+    guide = client.post(f"/api/v1/leads/{lead['id']}/nba", headers=headers)
+    assert guide.status_code == 200
+    steps = guide.json()["data"]["steps"]
+    assert len(steps) >= 4
+    drafted = client.post(
+        "/api/v1/ai/drafts/whatsapp",
+        headers=headers,
+        json={"entity_type": "lead", "entity_id": lead["id"]},
+    )
+    assert drafted.status_code == 200
+    body = drafted.json()["data"]
+    assert body["approval_id"] is None
+    assert body["body"].strip()
+
+
 def test_knowledge_is_tenant_scoped(client: TestClient) -> None:
     agrayian = login(client, "admin@agrayian.demo")
     northline = login(client, "admin@northline.demo")

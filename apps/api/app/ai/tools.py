@@ -73,6 +73,7 @@ def tool_get_lead(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         "status": lead.status,
         "source": lead.source,
         "consent_email": lead.consent_email,
+        "consent_whatsapp": lead.consent_whatsapp,
         "opt_out": lead.opt_out,
         "notes": lead.notes,
     }

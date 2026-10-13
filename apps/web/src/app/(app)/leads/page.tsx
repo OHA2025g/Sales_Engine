@@ -157,6 +157,7 @@ export default function LeadsPage() {
                 cell: (row) => <Badge>{labelize(row.status)}</Badge>,
               },
               { key: "score", header: "Score", cell: (row) => <Score value={row.latest_score?.total} /> },
+              { key: "owner", header: "Assigned", cell: (row) => row.owner_name || "—" },
             ]}
           />
           <Pagination page={page} pageSize={25} total={total} onPage={setPage} />

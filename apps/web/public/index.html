@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sales Engine</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/revenue-design/style.css?v=system-font" />
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="modal" aria-labelledby="modal-title"></dialog>
+  <script>
+    window.__AGRAYIAN_API_URL = "http://localhost:8000";
+    (function () {
+      if (location.hash) return;
+      var path = location.pathname.replace(/\/$/, "") || "/";
+      var exact = {
+        "/": "home",
+        "/login": "login",
+        "/flow": "flow",
+        "/strategy": "strategy",
+        "/icps": "icps",
+        "/market": "market",
+        "/market/signals": "signals",
+        "/market/triggers": "triggers",
+        "/campaigns": "campaigns",
+        "/content": "content",
+        "/social": "social",
+        "/calendar": "calendar",
+        "/acquisition": "acquisition",
+        "/leads": "leads",
+        "/accounts": "accounts",
+        "/contacts": "contacts",
+        "/imports": "imports",
+        "/sequences": "sequences",
+        "/sequences/builder": "sequence-builder",
+        "/conversations": "conversations",
+        "/meetings": "meetings",
+        "/pipeline": "pipeline",
+        "/deals": "deals",
+        "/tasks": "tasks",
+        "/commercial": "commercial",
+        "/commercial/proposal": "proposal",
+        "/commercial/contracts": "contracts",
+        "/customers": "customers",
+        "/onboarding": "onboarding",
+        "/success": "success",
+        "/renewals": "renewals",
+        "/expansion": "expansion",
+        "/advocacy": "advocacy",
+        "/automation/runs": "runs",
+        "/automation/approvals": "approvals",
+        "/automation/voice-scripts": "voice",
+        "/playbooks": "playbooks",
+        "/playbooks/builder": "playbook-builder",
+        "/policies": "policies",
+        "/forecast": "forecast",
+        "/insights/attribution": "attribution",
+        "/insights/retention": "retention",
+        "/insights/automation": "automation",
+        "/intelligence": "intelligence",
+        "/settings/company": "company",
+        "/setup": "setup",
+        "/launch": "setup",
+        "/knowledge": "knowledge",
+        "/models": "models",
+        "/admin/integrations": "integrations",
+        "/admin/users": "users",
+        "/admin/teams": "teams",
+        "/admin/flags": "flags",
+        "/admin/audit": "audit",
+        "/admin/pilot": "pilot",
+        "/security": "security",
+        "/design-system": "design-system",
+        "/screens": "screen-index"
+      };
+      var screen = exact[path];
+      if (!screen) {
+        if (path.indexOf("/capture") === 0) screen = "capture";
+        else if (path.indexOf("/leads/") === 0) screen = "lead-detail";
+        else if (path.indexOf("/accounts/") === 0) screen = "account-detail";
+        else if (path.indexOf("/contacts/") === 0) screen = "contact-detail";
+        else if (path.indexOf("/market/") === 0) screen = "market-detail";
+        else if (path.indexOf("/campaigns/") === 0) screen = "campaign-detail";
+        else if (path.indexOf("/content/") === 0) screen = "content-editor";
+        else if (path.indexOf("/meetings/") === 0) screen = "meeting-detail";
+        else if (path.indexOf("/commercial/quotes/") === 0) screen = "quote-detail";
+        else if (path.indexOf("/commercial/contracts/") === 0) screen = "contract-detail";
+        else if (path.indexOf("/customers/") === 0) screen = "customer-detail";
+        else if (path.indexOf("/renewals/") === 0) screen = "renewal-detail";
+        else if (path.indexOf("/automation/runs/") === 0) screen = "run-detail";
+        else if (path.indexOf("/tasks/") === 0) screen = "task-detail";
+        else if (path.indexOf("/opportunities/") === 0) screen = "opportunity-detail";
+        else if (path.indexOf("/coming-soon") === 0) screen = "coming-soon";
+        else screen = "home";
+      }
+      location.hash = "/" + screen;
+    })();
+  </script>
+  <script defer src="/revenue-design/data.js"></script>
+  <script defer src="/revenue-design/forms.js?v=interest-form"></script>
+  <script defer src="/revenue-design/app.js?v=connection-details"></script>
+</body>
+</html>

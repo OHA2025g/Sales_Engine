@@ -37,6 +37,48 @@ def generate_for_opportunity(db: Session, tenant_id: UUID, opportunity: Opportun
     return row
 
 
+def steps_for_lead(lead: Lead) -> list[str]:
+    name = f"{lead.first_name} {lead.last_name}".strip() or "this person"
+    company = lead.company_name or "the company on the record"
+    title = lead.title or "the role on the record"
+    source = lead.source or "the recorded source"
+    if lead.opt_out:
+        return [
+            f"Do not email or message {name}.",
+            "Leave the opt-out in place. Do not start a sequence.",
+            "Write any new request in the ledger only.",
+        ]
+    if lead.status == "meeting_scheduled":
+        return [
+            f"Open the meeting already booked with {name}.",
+            f"Prepare the agenda from {title} at {company} and the notes on this lead.",
+            "Write down the success criteria and the decision process you need from that meeting.",
+            "Keep the meeting with a person. Do not send a follow-up until the outcome is recorded.",
+        ]
+    if not lead.consent_email and not lead.consent_whatsapp:
+        return [
+            f"Do not email or message {name}. Neither email nor WhatsApp consent is on file.",
+            "Keep any research in the ledger.",
+            "Ask for email or WhatsApp consent before outreach.",
+            "Come back and draft the first message only after that consent is recorded.",
+        ]
+    steps = [
+        f"Confirm {name}, {title}, at {company}. Source is {source}.",
+        "Read the email draft. Remove any line that is not true for this person. Do not add a meeting, a price, or a result that is not on the record.",
+        "Read the WhatsApp draft. Keep it to a few lines and make it say the same thing as the email.",
+    ]
+    if lead.consent_email:
+        steps.append("Leave the email as a draft. It is not sent until someone approves it.")
+    else:
+        steps.append("Do not send the email. Email consent is not on file.")
+    if lead.consent_whatsapp:
+        steps.append("Leave the WhatsApp message as a draft. It is not sent until someone approves it.")
+    else:
+        steps.append("Do not send the WhatsApp message. WhatsApp consent is not on file.")
+    steps.append("When both drafts are accurate, they wait in Approvals. Nothing goes out until that approval.")
+    return steps
+
+
 def generate_for_lead(db: Session, tenant_id: UUID, lead: Lead, actor_id: UUID) -> NextBestAction:
     latest = db.scalar(
         select(NextBestAction)

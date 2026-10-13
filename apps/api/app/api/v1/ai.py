@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.rag import ingest_text, retrieve
-from app.ai.runtime import draft_email, meeting_prep, research_account, run_copilot, summarize_entity
+from app.ai.runtime import draft_email, draft_whatsapp, meeting_prep, research_account, run_copilot, summarize_entity
 from app.core.deps import AuthContext, require_permission
 from app.db.session import get_db
 from app.models.ai import AIApproval, KnowledgeChunk, KnowledgeSource
@@ -18,6 +18,7 @@ from app.schemas.ai import (
     CopilotResponse,
     EmailDraftRequest,
     EmailDraftResponse,
+    WhatsAppDraftRequest,
     KnowledgeHit,
     KnowledgeSourceDetail,
     KnowledgeUploadResponse,
@@ -119,6 +120,26 @@ def email_draft(
         intent=body.intent,
         send=body.send,
     )
+    return Envelope(data=EmailDraftResponse(**result))
+
+
+@router.post("/drafts/whatsapp", response_model=Envelope[EmailDraftResponse])
+def whatsapp_draft(
+    body: WhatsAppDraftRequest,
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("ai.draft"))],
+) -> Envelope[EmailDraftResponse]:
+    try:
+        result = draft_whatsapp(
+            db,
+            tenant_id=ctx.tenant_id,
+            actor_id=ctx.user.id,
+            permissions=ctx.permissions,
+            entity_type=body.entity_type,
+            entity_id=body.entity_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Envelope(data=EmailDraftResponse(**result))
 
 

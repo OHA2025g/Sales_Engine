@@ -574,7 +574,12 @@ def _publish_post(db: Session, *, tenant_id: UUID, actor_id: UUID, draft: Conten
     draft.social_post_id = posted.id
     draft.provider = posted.provider
     draft.external_id = posted.external_id
-    draft.permalink = posted.permalink or resolved_permalink(draft.channel, posted.external_id)
+    draft.permalink = resolved_permalink(
+        draft.channel,
+        posted.external_id,
+        posted.permalink,
+        token=get_settings().meta_page_access_token if draft.channel in {"facebook", "instagram"} else "",
+    )
     draft.is_mock = posted.is_mock
     if posted.status == "published":
         draft.status = "published"

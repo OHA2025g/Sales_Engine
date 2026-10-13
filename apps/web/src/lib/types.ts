@@ -63,6 +63,8 @@ export type Lead = {
   has_buying_trigger: boolean;
   notes: string;
   latest_score: LeadScore | null;
+  owner_id?: string | null;
+  owner_name?: string;
 };
 
 export type Opportunity = {
@@ -104,8 +106,14 @@ export type ICP = {
   industries: string;
   geographies: string;
   min_employees: number | null;
+  max_employees?: number | null;
   description: string;
   is_default: boolean;
+  personas?: string;
+  seniorities?: string;
+  job_functions?: string;
+  target_companies?: string;
+  keywords?: string;
 };
 
 export type KPIs = {

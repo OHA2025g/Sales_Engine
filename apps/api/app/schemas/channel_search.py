@@ -46,3 +46,11 @@ class ChannelSearchStatusOut(APIModel):
     provider: str
     configured: bool
     detail: str
+
+
+class SnippetExpandIn(APIModel):
+    url: str = Field(min_length=8, max_length=1000)
+
+
+class SnippetExpandOut(APIModel):
+    text: str
