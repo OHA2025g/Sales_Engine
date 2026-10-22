@@ -86,6 +86,12 @@ Rules version one scores market attractiveness, AI readiness, technology readine
 
 Account research can draft a company overview, priorities, technology, triggers, stakeholders, and which AGRAYIAN solutions fit, but only from tools and retrieved knowledge. If the evidence is missing, it should not fill the gap with a guess.
 
+## Website signals
+
+Short answer: Website signals are facts read from an account’s public site after a person confirms them. The read is free. It does not send email, and it does not replace discovery or sequences.
+
+The catalog includes whether a site credits an agency, runs a Google or Meta tag, has booking, has schema, has a contact form, and similar public facts. A signal stays proposed until someone confirms it. Signals that need a paid search or a registry are shown and are not collected by this reader. A cohort is the accounts where the chosen facts are true. The first line on a match repeats one of those facts.
+
 ## Who we sell to
 
 Short answer: Ideal customer profiles and personas define who the tenant sells to. Discovery can search for people only when a live provider is connected. Mock discovery invents nobody.

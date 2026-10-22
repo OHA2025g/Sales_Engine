@@ -21,6 +21,7 @@ from app.api.v1 import (
     providers,
     public,
     search,
+    site_signals,
     social,
     webhooks,
     workflow,
@@ -35,6 +36,7 @@ api_router.include_router(ai.router)
 api_router.include_router(search.router)
 api_router.include_router(social.router)
 api_router.include_router(channel_search.router)
+api_router.include_router(site_signals.router)
 api_router.include_router(content.router)
 api_router.include_router(imports.router)
 api_router.include_router(market.router)

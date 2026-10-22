@@ -22,6 +22,7 @@ export const PAGES: PageEntry[] = [
   { href: "/market", label: "Market overview", workspace: "Strategy & Intelligence", permission: "markets.read" },
   { href: "/market/signals", label: "Signal inbox", workspace: "Strategy & Intelligence", permission: "markets.read" },
   { href: "/market/triggers", label: "Signal triggers", workspace: "Strategy & Intelligence", permission: "markets.read" },
+  { href: "/site-signals", label: "Website signals", workspace: "Strategy & Intelligence", permission: "signals.read" },
   { href: "/campaigns", label: "Campaigns", workspace: "Marketing", permission: "campaigns.read" },
   { href: "/channel-search", label: "Channel search", workspace: "Marketing", permission: "campaigns.read" },
   { href: "/content", label: "Content studio", workspace: "Marketing", permission: "campaigns.read" },
@@ -97,6 +98,7 @@ export const WORKSPACES: WorkspaceNav[] = [
       { href: "/market", label: "Market overview", permission: "markets.read" },
       { href: "/market/signals", label: "Signal inbox", permission: "markets.read" },
       { href: "/market/triggers", label: "Signal triggers", permission: "markets.read" },
+      { href: "/site-signals", label: "Website signals", permission: "signals.read" },
     ],
   },
   {
@@ -206,7 +208,7 @@ export const WORKSPACES: WorkspaceNav[] = [
 
 const WORKSPACE_ROOTS: Record<string, string[]> = {
   command: ["/", "/intelligence", "/flow"],
-  strategy: ["/strategy", "/icps", "/market"],
+  strategy: ["/strategy", "/icps", "/market", "/site-signals"],
   marketing: ["/campaigns", "/channel-search", "/content", "/social", "/calendar", "/acquisition"],
   sales: ["/leads", "/accounts", "/contacts", "/imports", "/sequences", "/conversations", "/meetings", "/automation/voice-scripts", "/automation/test-call", "/pipeline", "/deals", "/tasks", "/opportunities"],
   commercial: ["/commercial"],

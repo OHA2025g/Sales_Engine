@@ -25,6 +25,7 @@ Phases 0–22 plus Autopilot batches 1–8 and the full-funnel completion slice 
 - Controlled production pilot (batch 8): Alembic `013`, `tenants.operating_mode`, Pilot Readiness API/UI, IntegrityError idempotency, email `provider_actions`, Beat heartbeat, provider precedence, WhatsApp NOT_CONFIGURED, malware quarantine, mapping unlink, health rebuild, close-lost/churn/expansion outcomes, ROI/traces/briefs, docs 52–57, ADRs 029–035. CI RLS fail-if-empty, concurrency, E2E-LITE + E2E-POSTGRES.
 - Full-funnel completion: Alembic `014`–`016`, tenant credential execution, Exotel/Vapi split, India compliance gates, Recall/manual meeting capture, ads depth + campaigns UI, enrichment, public forms, campaign ROAS.
 - Channel search: keyword search grouped by Google, Facebook, Instagram, and LinkedIn. Rank is the Google result position. Missing search credentials stay `not_configured` and invent no posts. Alembic `024`.
+- Website signals: a confirmed catalog of public website facts, a free page reader, and a cohort whose first line is one of those facts. It does not discover leads, enroll sequences, or send mail. Alembic `031`.
 
 ## IN PROGRESS
 

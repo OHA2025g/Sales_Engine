@@ -1,5 +1,9 @@
 # Implementation Log
 
+## 2026-10-21 (Website signals)
+
+- Strategy → Website signals confirms a catalog of public website facts, reads account sites for free, and counts a cohort. The opening line repeats one observed fact. Existing discovery, sequences, and sending are unchanged. Alembic `031`.
+
 ## 2026-10-10 (Channel search uses Apify)
 
 - Channel search is back on Apify while the Gemini free-tier daily quota is used up. `CHANNEL_SEARCH_PROVIDER=apify`.

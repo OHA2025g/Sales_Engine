@@ -165,6 +165,7 @@ from app.models.signals import (
     UsageEvent,
     UsageRollup,
 )
+from app.models.site_signals import SiteObservation, SiteProfileCheck, SiteProfileRun, SiteSignalChoice
 from app.models.social import SocialImage, SocialPost
 from app.models.workflow import WorkflowDefinition, WorkflowRun
 from app.services.ml import snapshots as _ml_snapshots  # noqa: F401
@@ -220,6 +221,10 @@ __all__ = [
     "SocialImage",
     "ChannelSearch",
     "ChannelSearchHit",
+    "SiteSignalChoice",
+    "SiteObservation",
+    "SiteProfileRun",
+    "SiteProfileCheck",
     "SellerProfile",
     "ContentDraft",
     "CampaignMember",
