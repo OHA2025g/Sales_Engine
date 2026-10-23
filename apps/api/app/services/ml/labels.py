@@ -7,7 +7,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.crm import Customer, Lead, Opportunity, Renewal
+from app.models.crm import Customer, Opportunity, Renewal
+from app.models.execution import JourneyLink
 from app.models.identity import DomainEvent
 from app.models.ml import OpportunityFieldHistory
 from app.models.post_sale import ExpansionRecommendation
@@ -49,6 +50,54 @@ def _events(db: Session, tenant_id: UUID, entity_type: str, entity_id: str, even
     )
 
 
+def _in_window(value: datetime | None, start: datetime, deadline: datetime) -> bool:
+    stamped = aware_dt(value)
+    return stamped is not None and start < stamped <= deadline
+
+
+def _linked_opportunity_ids(db: Session, tenant_id: UUID, lead_id: str) -> list[str]:
+    keys = list(
+        db.scalars(
+            select(JourneyLink.journey_key).where(
+                JourneyLink.tenant_id == tenant_id,
+                JourneyLink.entity_type == "lead",
+                JourneyLink.entity_id == lead_id,
+                JourneyLink.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    if not keys:
+        keys = [f"lead:{lead_id}"]
+    rows = db.scalars(
+        select(JourneyLink).where(
+            JourneyLink.tenant_id == tenant_id,
+            JourneyLink.journey_key.in_(keys),
+            JourneyLink.entity_type == "opportunity",
+            JourneyLink.deleted_at.is_(None),
+        )
+    ).all()
+    return [row.entity_id for row in rows]
+
+
+def _linked_win_at(db: Session, tenant_id: UUID, lead_id: str, start: datetime, deadline: datetime) -> datetime | None:
+    for opportunity_id in _linked_opportunity_ids(db, tenant_id, lead_id):
+        for event in _events(db, tenant_id, "opportunity", opportunity_id, "deal.won"):
+            if _in_window(event.created_at, start, deadline):
+                return aware_dt(event.created_at)
+    return None
+
+
+def _linked_loss_at(db: Session, tenant_id: UUID, lead_id: str, start: datetime, deadline: datetime) -> datetime | None:
+    for opportunity_id in _linked_opportunity_ids(db, tenant_id, lead_id):
+        for event in _events(db, tenant_id, "opportunity", opportunity_id, "deal.lost"):
+            if _in_window(event.created_at, start, deadline):
+                return aware_dt(event.created_at)
+        opportunity = db.get(Opportunity, UUID(opportunity_id))
+        if opportunity is not None and opportunity.stage == "closed_lost" and _in_window(opportunity.updated_at, start, deadline):
+            return aware_dt(opportunity.updated_at)
+    return None
+
+
 def resolve_label(
     db: Session,
     *,
@@ -67,18 +116,17 @@ def resolve_label(
     mature = moment >= deadline
 
     if task_key == "LEAD_CONVERSION":
-        qualified = _events(db, tenant_id, "lead", entity_id, "lead.qualified")
-        hit = next((aware_dt(row.created_at) for row in qualified if aware_dt(row.created_at) and aware_dt(row.created_at) > start), None)
-        lead = db.get(Lead, UUID(entity_id))
-        if hit and hit <= deadline:
-            return ResolvedLabel("POSITIVE", 1, hit, {"event": "lead.qualified"})
-        if lead and lead.status == "converted" and (aware_dt(lead.updated_at) or moment) > start:
-            occurred = aware_dt(lead.updated_at)
-            if occurred and occurred <= deadline:
-                return ResolvedLabel("POSITIVE", 1, occurred, {"status": "converted"})
+        # Target is deal.won. The observation window is TASKS["LEAD_CONVERSION"]["horizon"]
+        # (observation_window_days). lead.qualified is not a positive label.
+        won_at = _linked_win_at(db, tenant_id, entity_id, start, deadline)
+        if won_at is not None:
+            return ResolvedLabel("POSITIVE", 1, won_at, {"event": "deal.won", "horizon_days": horizon})
+        lost_at = _linked_loss_at(db, tenant_id, entity_id, start, deadline)
+        if lost_at is not None:
+            return ResolvedLabel("NEGATIVE", 0, lost_at, {"stage": "closed_lost", "horizon_days": horizon})
         if not mature:
-            return ResolvedLabel("PENDING" if moment < deadline else "CENSORED", None, None, {"horizon": horizon})
-        return ResolvedLabel("NEGATIVE", 0, None, {"horizon_elapsed": True})
+            return ResolvedLabel("PENDING", None, None, {"horizon": horizon, "observation_window_days": horizon})
+        return ResolvedLabel("CENSORED", None, None, {"horizon_elapsed": True, "still_open": True})
 
     if task_key == "OPPORTUNITY_WIN":
         changes = db.scalars(
@@ -106,7 +154,7 @@ def resolve_label(
             return ResolvedLabel("NEGATIVE", 0, aware_dt(opp.updated_at), {"stage": "closed_lost"})
         if not mature:
             return ResolvedLabel("PENDING", None, None, {"horizon": horizon})
-        return ResolvedLabel("NEGATIVE", 0, None, {"still_open": True})
+        return ResolvedLabel("CENSORED", None, None, {"still_open": True, "horizon": horizon})
 
     if task_key == "CLOSE_DATE_SLIPPAGE":
         slips = db.scalars(

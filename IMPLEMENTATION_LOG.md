@@ -1,5 +1,13 @@
 # Implementation Log
 
+## 2026-10-23 (Controlled demonstration readiness)
+
+- Alembic `034` adds the demonstration scope, the operating-plan offer snapshot, and inbound mail headers. Migrations `032` and `033` were not edited.
+- Stale external work is held for review. Records and audit history stay. A prepared demonstration scope blocks every external send until it is authorized.
+- Automated replies and bounces do not receive a sales response. Out-of-office still defers. Two automated responders stop after the bounded limit.
+- Worker health reads the worker heartbeat. Beat health reads scheduler activity. An operating plan keeps the product selected at start.
+- The compose application is on revision `034`. No post was published, no message was sent, and no calendar event was created.
+
 ## 2026-10-21 (Website signals)
 
 - Strategy → Website signals confirms a catalog of public website facts, reads account sites for free, and counts a cohort. The opening line repeats one observed fact. Existing discovery, sequences, and sending are unchanged. Alembic `031`.

@@ -16,6 +16,7 @@ from app.services.audit import emit_event, write_audit
 from app.services.autopilot_settings import get_or_create_settings
 from app.services.consent import assert_can_dial, assert_can_dial_india
 from app.services.crm import add_activity
+from app.services.demo_guard import external_execution_block
 from app.services.idempotency import claim_daily_slot, claim_key
 from app.services.meeting_intelligence import apply_meeting_insights, extract_insights
 from app.services.provider_metrics import VOICE_CALLS, VOICE_COMPLETED, VOICE_FAILED
@@ -93,6 +94,9 @@ def queue_voice_dial(
 
 
 def execute_voice_dial(db: Session, *, tenant_id: UUID, actor_id: UUID, approval: AIApproval) -> str:
+    blocked = external_execution_block(db, tenant_id=tenant_id, action="voice.dial")
+    if blocked:
+        return blocked
     payload = json.loads(approval.payload_json or "{}")
     contact_id = payload.get("contact_id")
     if not contact_id:

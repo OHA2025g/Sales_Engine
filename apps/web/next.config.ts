@@ -4,6 +4,7 @@ import type { NextConfig } from "next";
 const buildCpus = Number(process.env.NEXT_BUILD_CPUS);
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname, "../.."),
   transpilePackages: ["@agrayian/sdk", "@agrayian/ui", "@agrayian/types"],

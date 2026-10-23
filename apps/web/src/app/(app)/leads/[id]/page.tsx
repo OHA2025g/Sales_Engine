@@ -1,6 +1,6 @@
 "use client";
 
-import { Checks, Go, initials, Line, Notice, Panel } from "@/components/ds";
+import { Checks, Go, initials, Line, Panel } from "@/components/ds";
 import { PageHeader } from "@/components/page-header";
 import { DeniedState, ErrorState, LoadingState } from "@/components/states";
 import { AutomationTrace } from "@/components/automation-trace";
@@ -16,6 +16,18 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
+type AssessmentFact = { facet: string; fact_class: string; value: string };
+type Assessment = {
+  coverage_known: number;
+  coverage_required: number;
+  confidence: string;
+  response_eligible: boolean;
+  meeting_eligible: boolean;
+  sales_qualified: boolean;
+  not_a_fit: boolean;
+  next_action: string;
+  facts: AssessmentFact[];
+};
 type NextAction = { action?: string; reason?: string; steps?: string[] };
 type WrittenDraft = { subject?: string; body?: string; note?: string };
 type TeamMember = { id: string; name: string; email: string; team_name?: string };
@@ -33,6 +45,11 @@ export default function LeadDetailPage() {
   const members = useQuery({
     queryKey: ["lead-assignees"],
     queryFn: async () => (await api<TeamMember[]>("/api/v1/leads/assignees")).data ?? [],
+    enabled: can("leads.read"),
+  });
+  const assessment = useQuery({
+    queryKey: ["lead-assessment", params.id],
+    queryFn: async () => (await api<Assessment>(`/api/v1/leads/${params.id}/assessment`)).data,
     enabled: can("leads.read"),
   });
   const form = useForm<Lead>();
@@ -149,10 +166,24 @@ export default function LeadDetailPage() {
           </>
         }
       />
-      <Notice
-        title="Next expected outcome: qualified discovery"
-        body="Confirm the buyer’s success criteria, technical stakeholder, and decision process before opportunity handoff."
-      />
+      {assessment.isLoading ? <LoadingState label="Loading the assessment" /> : null}
+      {assessment.isError ? <ErrorState message="The assessment could not be loaded." /> : null}
+      {assessment.data ? (
+        <section className="panel" style={{ marginBottom: 16 }}>
+          <header className="panel-head"><h2>Assessment</h2></header>
+          <div className="panel-body">
+            <div className="line-item"><span>Coverage</span><span>{assessment.data.coverage_known}/{assessment.data.coverage_required}</span></div>
+            <div className="line-item"><span>Confidence</span><span>{assessment.data.confidence}</span></div>
+            <div className="line-item"><span>Response</span><span>{assessment.data.response_eligible ? "Eligible" : "Not eligible"}</span></div>
+            <div className="line-item"><span>Discovery meeting</span><span>{assessment.data.meeting_eligible ? "Eligible" : "Not eligible"}</span></div>
+            <div className="line-item"><span>Sales qualification</span><span>{assessment.data.sales_qualified ? "Qualified" : "Not qualified"}</span></div>
+            <div className="line-item"><span>Next action</span><span>{labelize(assessment.data.next_action)}</span></div>
+            {assessment.data.facts.filter((fact) => fact.fact_class !== "unknown").map((fact) => (
+              <div className="line-item" key={fact.facet}><span>{labelize(fact.facet)}</span><span>{fact.fact_class}{fact.value ? ` · ${fact.value}` : ""}</span></div>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <div className="ds-grid wide">
         <Panel title="Lead context">
           <div className="ds-flex">

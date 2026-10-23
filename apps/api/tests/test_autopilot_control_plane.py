@@ -13,7 +13,12 @@ def test_settings_get_returns_current_flags(client: TestClient) -> None:
 
 
 def _enable(client: TestClient, headers: dict) -> None:
-    client.patch("/api/v1/autonomy/settings", headers=headers, json={"enabled": True})
+    response = client.patch(
+        "/api/v1/autonomy/settings",
+        headers=headers,
+        json={"enabled": True, "quiet_hours_start": "00:00", "quiet_hours_end": "00:00"},
+    )
+    assert response.status_code == 200, response.text
 
 
 def _account_id(client: TestClient, headers: dict) -> str:
@@ -52,13 +57,14 @@ def test_consented_lead_intake_queues_approval_once(client: TestClient) -> None:
     mine = [row for row in approvals if row.get("entity_id") == lead["id"] and row["action_type"].endswith(".send")]
     assert mine
     assert mine[0]["why"]
+    assert all(row.get("action_type") != "email.acknowledge" for row in approvals if row.get("entity_id") == lead["id"])
     client.post(f"/api/v1/leads/{lead['id']}/score", headers=headers)
     again = client.get("/api/v1/ai/approvals", headers=headers).json()["data"]
     mine_again = [row for row in again if row.get("entity_id") == lead["id"] and row["action_type"].endswith(".send")]
     assert len(mine_again) == len(mine)
 
 
-def test_approval_executes_mock_email(client: TestClient) -> None:
+def test_approval_executes_mock_email(client: TestClient, mock_providers: None) -> None:
     headers = login(client)
     _enable(client, headers)
     lead = _create_lead(client, headers, email="ava.send@meridianbank.example", first_name="Send")
@@ -74,6 +80,24 @@ def test_approval_executes_mock_email(client: TestClient) -> None:
     assert "mock-email" in note or "Provider" in note
     trace = client.get(f"/api/v1/autonomy/entities/lead/{lead['id']}", headers=headers).json()["data"]
     assert trace["state"] == "CONTACTED"
+
+
+def test_gmail_without_a_mailbox_blocks_the_send(client: TestClient, monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "email_provider", "gmail")
+    headers = login(client)
+    _enable(client, headers)
+    lead = _create_lead(client, headers, email="ava.gmail.blocked@meridianbank.example", first_name="Blocked")
+    approvals = client.get("/api/v1/ai/approvals", headers=headers).json()["data"]
+    approval = next(row for row in approvals if row.get("entity_id") == lead["id"] and row["action_type"].endswith(".send"))
+    decided = client.post(
+        f"/api/v1/ai/approvals/{approval['id']}/decide",
+        headers=headers,
+        json={"decision": "approve", "note": "Ship it"},
+    )
+    assert decided.status_code == 200, decided.text
+    assert "BLOCKED BY CONFIGURATION" in decided.json()["data"]["decision_note"]
 
 
 def test_no_consent_does_not_queue_send(client: TestClient) -> None:

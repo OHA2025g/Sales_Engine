@@ -105,6 +105,7 @@ class AutopilotSettingsIn(APIModel):
     allow_deployment_provider_defaults: bool | None = None
     allow_unscanned_uploads: bool | None = None
     whatsapp_channel_paused: bool | None = None
+    sales_rules_json: str | None = None
 
 
 class AutopilotSettingsOut(APIModel):
@@ -176,6 +177,7 @@ class AutopilotSettingsOut(APIModel):
     allow_unscanned_uploads: bool = True
     whatsapp_channel_paused: bool = False
     current_policy_version: int = 1
+    sales_rules_json: str = "{}"
 
 
 class AutonomyPauseIn(APIModel):

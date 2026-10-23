@@ -1,6 +1,12 @@
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+
 from celery import Celery
+from celery.signals import heartbeat_sent
 
 from app.core.config import get_settings
+from app.workers.health import WORKER_HEARTBEAT
 
 settings = get_settings()
 celery_app = Celery("agrayian", broker=settings.redis_url, backend=settings.redis_url)
@@ -42,6 +48,7 @@ celery_app.conf.update(
         "reconcile-requested-actions": {"task": "reconcile_requested_actions", "schedule": 120.0},
         "ml-evaluate-matured": {"task": "ml_evaluate_matured", "schedule": 86400.0},
         "scheduler-heartbeat": {"task": "scheduler_heartbeat", "schedule": 60.0},
+        "hold-stale-external-work": {"task": "hold_stale_external_work", "schedule": 60.0},
         "operator-daily-brief": {"task": "operator_daily_brief", "schedule": 86400.0},
     },
 )
@@ -52,6 +59,55 @@ def run_autonomous_cycles() -> int:
     from app.services.autonomy import run_autonomous_cycles_for_all_tenants
 
     return run_autonomous_cycles_for_all_tenants()
+
+
+_last_worker_db_write = 0.0
+
+
+@heartbeat_sent.connect
+def _record_worker_heartbeat(**_kwargs: object) -> None:
+    """The worker emits this signal. Importing the database here avoids a cycle at process start."""
+    global _last_worker_db_write
+    try:
+        Path(WORKER_HEARTBEAT).write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
+    except OSError:
+        return
+    now = time.monotonic()
+    if now - _last_worker_db_write < 30:
+        return
+    _last_worker_db_write = now
+    from app.db.session import get_engine, get_session
+    from app.services.scheduler_health import record_beat
+
+    get_engine()
+    db = get_session()
+    try:
+        record_beat(db, key="celery_worker")
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+@celery_app.task(name="hold_stale_external_work")
+def hold_stale_external_work() -> int:
+    from app.db.session import get_engine, get_session
+    from app.db.tenant_context import supports_rls
+    from app.db.tenant_jobs import run_per_tenant
+    from app.services.external_hold import hold_stale_external_work as hold_rows
+
+    get_engine()
+    db = get_session()
+    try:
+        if supports_rls(db):
+            total = run_per_tenant(db, lambda tenant_id: sum(hold_rows(db, tenant_id=tenant_id).values()))
+        else:
+            total = sum(hold_rows(db).values())
+        db.commit()
+        return total
+    finally:
+        db.close()
 
 
 @celery_app.task(name="process_outbox")
@@ -79,12 +135,17 @@ def sync_inbound_mail() -> int:
 @celery_app.task(name="retry_failed_sends")
 def retry_failed_sends() -> int:
     from app.db.session import get_engine, get_session
+    from app.db.tenant_context import supports_rls
+    from app.db.tenant_jobs import run_per_tenant
     from app.services.email_send import retry_retrying_sends
 
     get_engine()
     db = get_session()
     try:
-        count = retry_retrying_sends(db)
+        if supports_rls(db):
+            count = run_per_tenant(db, lambda tenant_id: retry_retrying_sends(db, tenant_id=tenant_id))
+        else:
+            count = retry_retrying_sends(db)
         db.commit()
         return count
     finally:
@@ -229,15 +290,20 @@ def retry_provider_actions() -> int:
     from app.db.tenant_jobs import run_per_tenant
     from app.models.ai import AIApproval
     from app.services.ads import execute_ads_spend
+    from app.services.external_hold import hold_stale_external_work as hold_rows
     from app.services.provider_ops import due_retries
     from app.services.voice import execute_voice_dial
 
     get_engine()
     db = get_session()
     try:
-        def _one(_tenant_id):
+        def _one(tenant_id):
+            hold_rows(db, tenant_id=tenant_id)
+            db.flush()
             count = 0
             for row in due_retries(db):
+                if row.tenant_id != tenant_id:
+                    continue
                 if not row.approval_id:
                     continue
                 approval = db.get(AIApproval, row.approval_id)

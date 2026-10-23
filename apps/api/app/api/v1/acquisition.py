@@ -25,7 +25,7 @@ from app.schemas.crm import LeadOut, LeadScoreOut
 from app.services.acquisition import capture_inbound, decide_dedupe
 from app.services.audit import write_audit
 from app.services.crm import latest_lead_score
-from app.services.orchestrator import process_pending_events
+from app.services.outbox_notify import notify_outbox
 from app.services.public_forms import (
     active_form_name_taken,
     create_form_key,
@@ -92,8 +92,8 @@ def capture(
         after=body.model_dump(),
         correlation_id=ctx.correlation_id,
     )
-    process_pending_events(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
     db.commit()
+    notify_outbox()
     db.refresh(capture_row)
     if lead is not None:
         db.refresh(lead)

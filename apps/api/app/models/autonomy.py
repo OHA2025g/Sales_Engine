@@ -10,13 +10,19 @@ from app.db.base import Base, TenantOwnedMixin
 class AutonomousRun(Base, TenantOwnedMixin):
     __tablename__ = "autonomous_runs"
 
-    status: Mapped[str] = mapped_column(String(20), default="running", nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="running", nullable=False)
     trigger: Mapped[str] = mapped_column(String(40), default="manual", nullable=False)
     workflow: Mapped[str] = mapped_column(String(80), default="cycle", nullable=False)
     trigger_event: Mapped[str] = mapped_column(String(80), default="", nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(64), default="", nullable=False)
     summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    parent_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("autonomous_runs.id"), nullable=True)
+    business_state: Mapped[str] = mapped_column(String(40), default="", nullable=False)
+    lease_owner: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AutonomousRunStep(Base, TenantOwnedMixin):
@@ -34,6 +40,10 @@ class AutonomousRunStep(Base, TenantOwnedMixin):
     idempotency_key: Mapped[str] = mapped_column(String(200), default="", nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_owner: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    effect_key: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    outcome: Mapped[str] = mapped_column(String(32), default="", nullable=False)
 
 
 class AutopilotSettings(Base, TenantOwnedMixin):
@@ -111,6 +121,7 @@ class AutopilotSettings(Base, TenantOwnedMixin):
     current_policy_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     voice_telephony_override: Mapped[str] = mapped_column(String(40), default="", nullable=False)
     voice_conversation_provider: Mapped[str] = mapped_column(String(40), default="vapi", nullable=False)
+    sales_rules_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
 
 
 class EntityAutomationState(Base, TenantOwnedMixin):

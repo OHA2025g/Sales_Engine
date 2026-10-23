@@ -16,7 +16,12 @@ from tests.conftest import login
 
 
 def _enable(client: TestClient, headers: dict) -> None:
-    client.patch("/api/v1/autonomy/settings", headers=headers, json={"enabled": True})
+    response = client.patch(
+        "/api/v1/autonomy/settings",
+        headers=headers,
+        json={"enabled": True, "quiet_hours_start": "00:00", "quiet_hours_end": "00:00"},
+    )
+    assert response.status_code == 200, response.text
 
 
 def _account_id(client: TestClient, headers: dict) -> str:
@@ -117,7 +122,8 @@ def test_google_callback_saves_mailbox_for_the_signed_in_tenant(client: TestClie
     assert "test-refresh" not in json.dumps(rows)
 
 
-def test_send_idempotent_on_double_approve(client: TestClient) -> None:
+def test_send_idempotent_on_double_approve(client: TestClient, mock_providers: None) -> None:
+    _ = mock_providers
     headers = login(client)
     _enable(client, headers)
     lead = _create_lead(client, headers, email="double.send@meridianbank.example", first_name="Double")
@@ -162,7 +168,8 @@ def test_inbound_unsubscribe_and_duplicate(client: TestClient) -> None:
     assert len(inbound) == 1
 
 
-def test_meeting_request_then_book(client: TestClient) -> None:
+def test_meeting_request_then_book(client: TestClient, mock_providers: None) -> None:
+    _ = mock_providers
     headers = login(client)
     _enable(client, headers)
     lead = _create_lead(client, headers, email="meet.loop@meridianbank.example", first_name="Meet")
@@ -258,7 +265,8 @@ def test_prompt_injection_does_not_change_settings(client: TestClient) -> None:
     assert classified["category"] != "UNSUBSCRIBE"
 
 
-def test_calendar_health_is_mock_not_blocked(client: TestClient) -> None:
+def test_calendar_health_is_mock_not_blocked(client: TestClient, mock_providers: None) -> None:
+    _ = mock_providers
     headers = login(client)
     status = client.get("/api/v1/autonomy/status", headers=headers).json()["data"]
     calendar = next(row for row in status["providers"] if "Calendar" in row["name"])

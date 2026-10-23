@@ -1,5 +1,6 @@
 "use client";
 
+import { CommandOperations } from "@/components/command-operations";
 import { Icon } from "@/components/icon";
 import { PageHeader } from "@/components/page-header";
 import { DeniedState, ErrorState, LoadingState } from "@/components/states";
@@ -215,7 +216,7 @@ export default function CommandCenterPage() {
               <h2>{money(k.weighted_pipeline_value)} weighted</h2>
               <span className="num muted">Win rate {Math.round(k.win_rate * 100)}%</span>
             </div>
-            <div className="progress"><i style={{ width: "0%" }} /></div>
+            <p className="muted">Recorded pipeline value. A stage with no journey is not shown as progress.</p>
             <div className="ds-flex" style={{ marginTop: 18 }}>
               <Link className="btn" href="/strategy">View strategy</Link>
               <Link className="btn" href="/forecast">View forecast</Link>
@@ -233,6 +234,7 @@ export default function CommandCenterPage() {
           </div>
         </section>
       </div>
+      <CommandOperations />
       <ConfirmDialog
         open={confirm}
         title="Pause every journey?"

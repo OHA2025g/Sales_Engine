@@ -13,9 +13,11 @@ from app.services.ads import execute_ads_creative, execute_ads_pause, execute_ad
 from app.services.automation_state import pause_entity, upsert_state
 from app.services.autopilot_settings import get_or_create_settings
 from app.services.calendar_booking import book_meeting, cancel_meeting, reschedule_meeting
+from app.services.demo_guard import external_execution_block
 from app.services.email_send import execute_email_send
 from app.services.entity_mapping import confirm_mapping
 from app.services.expansion import mint_opportunity
+from app.services.external_hold import approval_execution_block
 from app.services.meeting_capture import grant_recording_consent
 from app.services.renewal import execute_renewal_commercial
 from app.services.voice import execute_voice_dial
@@ -196,6 +198,7 @@ HANDLERS: dict[str, Handler] = {
     "whatsapp.send": _whatsapp,
     "quote.discount": _quote_discount,
     "social.publish": _social_publish,
+    "email.acknowledge": _send,
 }
 
 
@@ -226,7 +229,7 @@ def _channel_blocked(db: Session, tenant_id: UUID, action: str) -> str:
     settings = get_or_create_settings(db, tenant_id=tenant_id)
     if settings.emergency_stop:
         return "Emergency stop is active. External actions are suspended."
-    if action.endswith(".send") and settings.email_channel_paused:
+    if (action.endswith(".send") or action == "email.acknowledge") and settings.email_channel_paused:
         return "Email channel is paused."
     if action.startswith("ads.") and settings.ads_channel_paused:
         return "Ads channel is paused."
@@ -254,6 +257,14 @@ def dispatch_approval(
     blocked = _channel_blocked(db, tenant_id, row.action_type)
     if blocked:
         return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message=blocked)
+    held_reason, should_hold = approval_execution_block(row)
+    if held_reason:
+        if should_hold and row.status in {"pending", "approved"}:
+            row.status = "held"
+        return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message=held_reason)
+    scope_block = external_execution_block(db, tenant_id=tenant_id, action=row.action_type)
+    if scope_block:
+        return _remember(db, tenant_id=tenant_id, actor_id=actor_id, row=row, message=scope_block)
     if row.expires_at is not None:
         expires = row.expires_at
         if expires.tzinfo is None:

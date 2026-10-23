@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -15,7 +15,9 @@ from app.services.audit import emit_event
 from app.services.automation_state import get_state, is_entity_paused, upsert_state
 from app.services.autopilot_settings import get_or_create_settings, in_quiet_hours
 from app.services.crm import add_activity
+from app.services.demo_guard import external_execution_block
 from app.services.enrichment import enrich_lead
+from app.services.external_hold import hold_stale_external_work
 from app.services.idempotency import claim_key, remember_result
 from app.services.inbox import handle_email_received
 from app.services.lifecycle import enroll_sequence
@@ -79,6 +81,7 @@ def _add_step(
     idempotency_key: str = "",
 ) -> AutonomousRunStep:
     now = datetime.now(UTC)
+    running = status == "running"
     row = AutonomousRunStep(
         tenant_id=tenant_id,
         created_by=actor_id,
@@ -92,7 +95,10 @@ def _add_step(
         error=error,
         idempotency_key=idempotency_key,
         started_at=now,
-        finished_at=now,
+        finished_at=None if running else now,
+        lease_owner="worker" if running else "",
+        lease_until=now + timedelta(minutes=5) if running else None,
+        outcome="" if running else status,
     )
     db.add(row)
     db.flush()
@@ -158,8 +164,14 @@ def prepare_outreach(
     correlation_id: str,
     position: int,
 ) -> dict:
+    from app.services.assessment import latest_decision
     from app.services.journey_engine import block_evaluation, evaluation_key, mark_execution
 
+    decision = latest_decision(db, tenant_id=tenant_id, lead_id=lead.id)
+    if decision is not None and decision.response_eligible and lead.source != "ai_discovery":
+        from app.services.acknowledgement import prepare_acknowledgement
+
+        return prepare_acknowledgement(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, settings=settings, run=run)
     if in_quiet_hours(settings):
         upsert_state(
             db,
@@ -558,6 +570,10 @@ def run_lead_intake(
             correlation_id=correlation_id,
         )
         qualified = bool(qualification["qualified"])
+        held = bool(qualification.get("held_for_response"))
+        step_status = "completed" if qualified else "waiting" if held else "BLOCKED"
+        next_action = "research" if qualified else str(qualification.get("next_action") or "")
+        entity_state = "QUALIFIED" if qualified else "WAITING_FOR_CUSTOMER" if held else "BLOCKED"
         _add_step(
             db,
             tenant_id=tenant_id,
@@ -565,7 +581,7 @@ def run_lead_intake(
             run=run,
             name="qualify",
             position=position,
-            status="completed" if qualified else "BLOCKED",
+            status=step_status,
             detail=qualification,
             entity_type="lead",
             entity_id=str(lead.id),
@@ -576,10 +592,10 @@ def run_lead_intake(
             actor_id=actor_id,
             entity_type="lead",
             entity_id=str(lead.id),
-            state="QUALIFIED" if qualified else "BLOCKED",
+            state=entity_state,
             last_action="qualify",
-            next_action="research" if qualified else "",
-            blocked_reason="" if qualified else "; ".join(qualification.get("reasons", [])),
+            next_action=next_action,
+            blocked_reason="" if qualified or held else "; ".join(qualification.get("reasons", [])),
             run_id=run.id,
         )
         result["qualified"] = qualified
@@ -632,7 +648,30 @@ def run_lead_intake(
         )
         position += 1
 
-    if qualified:
+    response_eligible = bool(qualification.get("response_eligible")) and lead.source != "ai_discovery" if "qualification" in locals() else False
+    meeting_eligible = bool(qualification.get("meeting_eligible")) if "qualification" in locals() else False
+    if response_eligible:
+        from app.services.acknowledgement import prepare_acknowledgement
+
+        result["acknowledgement"] = prepare_acknowledgement(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            lead=lead,
+            settings=settings,
+            run=run,
+        )
+    if meeting_eligible:
+        from app.services.calendar_booking import offer_discovery_meeting
+
+        result["meeting"] = offer_discovery_meeting(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            lead=lead,
+            run_id=run.id,
+        )
+    if qualified and not response_eligible:
         generate_for_lead(db, tenant_id, lead, actor_id)
         upsert_state(
             db,
@@ -659,12 +698,37 @@ def run_lead_intake(
         summary = f"Intake for {lead.email or lead.id}. Outreach {outreach.get('status')}."
         run_status = "WAITING_FOR_APPROVAL" if outreach.get("status") == "WAITING_FOR_APPROVAL" else "completed"
         if outreach.get("status") == "BLOCKED":
-            run_status = "completed"
+            run_status = "blocked"
+        run.business_state = run_status
         _finish_run(run, summary, run_status)
         remember_result(key_row, str(run.id))
         return result
 
-    _finish_run(run, f"Intake blocked for {lead.email or lead.id}.")
+    ack = result.get("acknowledgement") or {}
+    meeting = result.get("meeting") or {}
+    if meeting.get("status") == "waiting_for_configuration":
+        finish_status = "waiting_for_configuration"
+    elif meeting_eligible:
+        finish_status = "waiting_for_customer"
+    elif ack.get("status") == "sent":
+        finish_status = "completed"
+    elif ack.get("status") == "waiting_for_approval":
+        finish_status = "WAITING_FOR_APPROVAL"
+    elif ack.get("status") == "waiting_for_configuration":
+        finish_status = "waiting_for_configuration"
+    elif ack.get("status") == "waiting_for_authorization":
+        finish_status = "waiting_for_authorization"
+    elif ack.get("status") == "unknown":
+        finish_status = "running"
+    else:
+        held = bool(qualification.get("held_for_response")) if "qualification" in locals() else False
+        finish_status = "waiting_for_customer" if held else "blocked"
+    run.business_state = finish_status
+    if finish_status == "running":
+        run.status = "running"
+        run.summary = f"Intake acknowledgement outcome is unknown for {lead.email or lead.id}."
+    else:
+        _finish_run(run, f"Intake {finish_status} for {lead.email or lead.id}.", finish_status)
     remember_result(key_row, str(run.id))
     return result
 
@@ -691,6 +755,7 @@ def handle_event(db: Session, event: DomainEvent, *, actor_id: UUID | None = Non
         "email.received",
         "meeting.booked",
         "meeting.created",
+        "lead.sales_qualified",
     }:
         lead = _load_lead(db, tenant_id, event.entity_id)
         if lead is None:
@@ -779,7 +844,26 @@ def handle_event(db: Session, event: DomainEvent, *, actor_id: UUID | None = Non
             )
             if lead.status != "meeting_scheduled":
                 lead.status = "meeting_scheduled"
+            qualify_lead(
+                db,
+                tenant_id=tenant_id,
+                actor_id=actor,
+                lead=lead,
+                settings=settings,
+                correlation_id=event.correlation_id,
+            )
             return "meeting_booked"
+        if event_type == "lead.sales_qualified":
+            from app.services.assessment import handoff_sales_opportunity
+
+            handoff_sales_opportunity(
+                db,
+                tenant_id=tenant_id,
+                actor_id=actor,
+                lead=lead,
+                correlation_id=event.correlation_id,
+            )
+            return "sales_handoff"
         return "recorded"
     return "ignored"
 
@@ -801,6 +885,7 @@ def process_pending_events(
         )
     from app.services.event_delivery import acknowledge, claim_next_event, fail_delivery
 
+    hold_stale_external_work(db, tenant_id=tenant_id)
     db.flush()
     processed = 0
     while processed < limit:
@@ -849,6 +934,8 @@ def retry_entity(db: Session, *, tenant_id: UUID, actor_id: UUID, entity_type: s
 
 
 def due_sequence_work(db: Session, *, tenant_id: UUID, actor_id: UUID) -> dict:
+    hold_stale_external_work(db, tenant_id=tenant_id)
+    db.flush()
     now = datetime.now(UTC)
     enrollments = db.scalars(
         select(SequenceEnrollment).where(
@@ -873,6 +960,8 @@ def due_sequence_work(db: Session, *, tenant_id: UUID, actor_id: UUID) -> dict:
             continue
         lead = _load_lead(db, tenant_id, str(enrollment.lead_id))
         if lead is None or lead.opt_out or (step.action_type in {"email_draft", "email_send", "send"} and not lead.consent_email):
+            continue
+        if external_execution_block(db, tenant_id=tenant_id, action="sequence.email.send", recipient=lead.email or ""):
             continue
         from app.services.journey_engine import execute_due_step
 

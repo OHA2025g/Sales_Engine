@@ -1,6 +1,6 @@
 import base64
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID, uuid4
@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.services.mail_origin import kept_headers
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class EmailSendResult:
     status: str = "sent"
     reason: str = ""
     retryable: bool = False
+    retry_after_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,7 @@ class InboundEmail:
     body_text: str
     received_at: datetime
     history_id: str = ""
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 class EmailProvider(Protocol):
@@ -94,6 +97,13 @@ class MockEmailProvider:
         return {"thread_id": thread_id, "messages": [], "provider": "mock-email", "is_mock": True}
 
     def message_status(self, *, provider_message_id: str) -> dict:
+        if not provider_message_id or provider_message_id.startswith("pending-"):
+            return {
+                "provider_message_id": provider_message_id,
+                "status": "unknown",
+                "provider": "mock-email",
+                "is_mock": True,
+            }
         return {"provider_message_id": provider_message_id, "status": "sent", "provider": "mock-email", "is_mock": True}
 
     def list_since(self, *, history_id: str = "") -> list[InboundEmail]:
@@ -302,6 +312,7 @@ class GmailEmailProvider:
             body_text=body,
             received_at=datetime.now(UTC),
             history_id=str(payload.get("historyId") or ""),
+            headers=kept_headers(headers),
         )
 
     def _submit(self, *, to: str, subject: str, body: str, thread_id: str) -> EmailSendResult:

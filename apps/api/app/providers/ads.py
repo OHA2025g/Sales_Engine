@@ -590,10 +590,11 @@ class LinkedInAdsProvider:
 
 
 class MetaAdsProvider:
-    def __init__(self, *, token: str, ad_account_id: str, client: httpx.Client | None = None) -> None:
+    def __init__(self, *, token: str, ad_account_id: str, client: httpx.Client | None = None, sandbox: bool = False) -> None:
         self._token = token
         self._account = ad_account_id.removeprefix("act_")
         self._client = client
+        self._sandbox = sandbox
 
     def health(self) -> AdsHealth:
         return AdsHealth(provider="meta-ads", is_mock=False, connected=True, reason="Meta Marketing credentials are set.")
@@ -830,6 +831,14 @@ class MetaAdsProvider:
                 client.close()
 
     def activate_campaign(self, *, external_id: str) -> AdsCampaignResult:
+        if self._sandbox:
+            return AdsCampaignResult(
+                ok=False,
+                provider="meta-ads",
+                is_mock=False,
+                reason="Sandbox cannot activate a campaign or spend.",
+                failure_class="CONFIGURATION",
+            )
         if not external_id:
             return AdsCampaignResult(ok=False, provider="meta-ads", is_mock=False, reason="No provider campaign id.", failure_class="PERMANENT")
         owns = self._client is None
@@ -905,7 +914,8 @@ def _ads_from_resolved(channel: str, resolved) -> AdsProvider:
         return NotConfiguredAdsProvider(channel)
     if channel == "linkedin":
         return LinkedInAdsProvider(token=token, ad_account_id=account_id)
-    return MetaAdsProvider(token=token, ad_account_id=account_id)
+    sandbox = (get_settings().meta_ads_mode or "").strip().lower() == "sandbox"
+    return MetaAdsProvider(token=token, ad_account_id=account_id, sandbox=sandbox)
 
 
 class PreparedAdsProvider(NotConfiguredAdsProvider):
@@ -939,6 +949,10 @@ def get_ads_provider(channel: str, db: Session | None = None, tenant_id: UUID | 
     mode = (settings.meta_ads_mode or "mock").strip().lower()
     if mode in {"live", "sandbox"}:
         if settings.meta_ads_configured:
-            return MetaAdsProvider(token=settings.meta_ads_token, ad_account_id=settings.resolved_meta_ad_account_id)
+            return MetaAdsProvider(
+                token=settings.meta_ads_token,
+                ad_account_id=settings.resolved_meta_ad_account_id,
+                sandbox=mode == "sandbox",
+            )
         return NotConfiguredAdsProvider("meta")
     return MockAdsProvider("instagram")

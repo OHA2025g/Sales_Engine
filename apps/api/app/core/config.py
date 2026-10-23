@@ -136,9 +136,12 @@ class Settings(BaseSettings):
 
     @property
     def resolved_llm_provider(self) -> str:
-        if self.llm_provider == "gemini":
+        name = (self.llm_provider or "").strip().lower()
+        if name == "gemini":
             return "gemini" if self.gemini_api_key else "not_configured"
-        return "mock"
+        if name == "mock":
+            return "mock"
+        return "not_configured"
 
     @property
     def resolved_apify_token(self) -> str:

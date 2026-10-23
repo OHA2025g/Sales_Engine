@@ -85,12 +85,19 @@ services:
       DATABASE_URL: postgresql+psycopg://agrayian_app:agrayian@postgres:5432/agrayian
       DATABASE_ADMIN_URL: postgresql+psycopg://agrayian:agrayian@postgres:5432/agrayian
       REDIS_URL: redis://redis:6379/0
+      SERVICE_ROLE: worker
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 -Q celery,automation,providers,ai,maintenance
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.workers.health", "worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   beat:
     build:
@@ -103,12 +110,19 @@ services:
       DATABASE_URL: postgresql+psycopg://agrayian_app:agrayian@postgres:5432/agrayian
       DATABASE_ADMIN_URL: postgresql+psycopg://agrayian:agrayian@postgres:5432/agrayian
       REDIS_URL: redis://redis:6379/0
+      SERVICE_ROLE: beat
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A app.workers.celery_app beat --loglevel=info
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.workers.health", "beat"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
 
   web:
     build:

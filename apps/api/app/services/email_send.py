@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -17,8 +18,11 @@ from app.services.automation_state import is_entity_paused, upsert_state
 from app.services.autopilot_settings import get_or_create_settings, in_quiet_hours
 from app.services.consent import assert_can_email, email_block_reason
 from app.services.crm import add_activity
+from app.services.demo_guard import external_execution_block
+from app.services.external_hold import hold_stale_external_work
 from app.services.idempotency import claim_daily_slot, claim_key, remember_result
 from app.services.lifecycle import enroll_sequence
+from app.services.mail_origin import response_block
 from app.services.outreach_limits import outreach_limit_reason
 from app.services.policy_versions import current_policy_version
 from app.services.provider_ops import begin_action, confirm_action, fail_action
@@ -134,6 +138,18 @@ def execute_email_send(
     existing = persisted_send_for_approval(db, tenant_id, approval.id)
     if existing is not None and existing.status == "SENT":
         return f"Provider {existing.provider} recorded send {existing.provider_message_id}."
+    if existing is not None and existing.status == "SENDING":
+        return "Send outcome is unknown. Reconcile before another attempt."
+    if existing is not None and existing.status == "FAILED":
+        return existing.last_error or "Send failed and will not be retried until the failure is corrected."
+    if existing is not None and existing.status == "RETRYING" and existing.next_retry_at is not None:
+        due = existing.next_retry_at if existing.next_retry_at.tzinfo else existing.next_retry_at.replace(tzinfo=UTC)
+        if due > datetime.now(UTC):
+            return f"Retry scheduled after {due.isoformat()}."
+        if existing.attempt >= 3:
+            existing.status = "FAILED"
+            existing.last_error = "Retry limit reached."
+            return existing.last_error
     lead_id = payload.get("lead_id") or approval.entity_id
     if not lead_id:
         return "Send was not executed: lead_id is missing from the approval payload."
@@ -159,6 +175,27 @@ def execute_email_send(
         return f"Send was not executed: {reason}."
     if is_entity_paused(db, tenant_id=tenant_id, entity_type="lead", entity_id=str(lead.id)):
         return "Send was not executed: automation is paused for this lead."
+    if approval.status == "held":
+        return "Held for review. It was not executed."
+    expires = approval.expires_at
+    if expires is not None and (expires if expires.tzinfo else expires.replace(tzinfo=UTC)) < datetime.now(UTC):
+        approval.status = "held"
+        return "Approval expired before execution."
+    scope_block = external_execution_block(db, tenant_id=tenant_id, action=approval.action_type or "email.send", recipient=lead.email or "")
+    if scope_block:
+        return scope_block
+    thread_block = response_block(db, tenant_id=tenant_id, thread_id=str(payload.get("thread_id") or ""))
+    if thread_block:
+        return thread_block
+    subject = str(payload.get("subject") or "Follow-up")
+    body = str(payload.get("body") or payload.get("template") or "")
+    version = hashlib.sha256(f"{subject}|{body}".encode()).hexdigest()
+    stored_copy = str(payload.get("copy_hash") or "")
+    if stored_copy and stored_copy != version:
+        return "Send was not executed: the content version does not match the authorized copy."
+    if not stored_copy:
+        payload["copy_hash"] = version
+        approval.payload_json = json.dumps(payload, default=str)
     settings = get_or_create_settings(db, tenant_id=tenant_id, actor_id=actor_id)
     if in_quiet_hours(settings):
         return "Send deferred: quiet hours."
@@ -244,8 +281,6 @@ def execute_email_send(
         limit=settings.max_emails_per_day,
     ):
         return "Send was not executed: Daily email cap reached."
-    subject = str(payload.get("subject") or "Follow-up")
-    body = str(payload.get("body") or payload.get("template") or "")
     pending_id = f"pending-{uuid4()}"
     conversation = find_or_create_thread(
         db,
@@ -278,15 +313,29 @@ def execute_email_send(
         db.add(message)
         db.flush()
     else:
+        message.attempt = (message.attempt or 1) + 1
         message.status = "SENDING"
         message.subject = subject
         message.body_text = body
     result = provider.send(to=lead.email, subject=subject, body=body, thread_id=conversation.provider_thread_id)
     if not result.ok:
-        fail_action(action, failure_class="TRANSIENT" if result.retryable else "PERMANENT", error=result.reason, retryable=result.retryable)
-        message.status = "RETRYING" if result.retryable else "FAILED"
-        message.last_error = result.reason
-        message.next_retry_at = datetime.now(UTC) + timedelta(minutes=2 ** min(message.attempt, 6)) if result.retryable else None
+        retryable = bool(result.retryable) and message.attempt < 3
+        failure_class = "RATE_LIMIT" if result.retryable and result.retry_after_seconds is not None else ("TRANSIENT" if result.retryable else "PERMANENT")
+        if result.reason == "BLOCKED BY CONFIGURATION":
+            failure_class = "CONFIGURATION"
+            retryable = False
+        fail_action(action, failure_class=failure_class, error=result.reason, retryable=retryable)
+        message.status = "RETRYING" if retryable else "FAILED"
+        message.last_error = "Retry limit reached. " + result.reason if result.retryable and not retryable else result.reason
+        if retryable:
+            delay = result.retry_after_seconds
+            message.next_retry_at = (
+                datetime.now(UTC) + timedelta(seconds=max(int(delay), 0))
+                if delay is not None
+                else datetime.now(UTC) + timedelta(minutes=2 ** min(message.attempt, 6))
+            )
+        else:
+            message.next_retry_at = None
         if not result.retryable:
             upsert_state(
                 db,
@@ -352,6 +401,8 @@ def execute_email_send(
             "is_mock": result.is_mock,
         },
     )
+    if str(payload.get("purpose") or "") == "acknowledgement":
+        _record_acknowledgement(db, tenant_id=tenant_id, actor_id=actor_id, lead_id=str(lead.id), message_id=str(message.id), provider_message_id=result.provider_message_id, correlation_id="")
     if enrollment is not None:
         advance_enrollment(db, enrollment)
     if approval.run_id:
@@ -363,19 +414,73 @@ def execute_email_send(
     return f"Provider {result.provider} recorded send {result.provider_message_id}."
 
 
-def retry_retrying_sends(db: Session, *, limit: int = 25) -> int:
-    now = datetime.now(UTC)
-    rows = db.scalars(
-        select(EmailMessage)
-        .where(
-            EmailMessage.deleted_at.is_(None),
-            EmailMessage.status == "RETRYING",
-            EmailMessage.approval_id.is_not(None),
-            EmailMessage.next_retry_at.is_not(None),
-            EmailMessage.next_retry_at <= now,
+def _record_acknowledgement(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    lead_id: str,
+    message_id: str,
+    provider_message_id: str,
+    correlation_id: str,
+) -> None:
+    from app.models.execution import JourneyLink
+    from app.models.identity import DomainEvent
+
+    already = db.scalar(
+        select(DomainEvent.id).where(
+            DomainEvent.tenant_id == tenant_id,
+            DomainEvent.event_type == "response.sent",
+            DomainEvent.entity_id == lead_id,
         )
-        .limit(limit)
-    ).all()
+    )
+    if already is None:
+        emit_event(
+            db,
+            tenant_id=tenant_id,
+            event_type="response.sent",
+            entity_type="lead",
+            entity_id=lead_id,
+            payload={"message_id": message_id, "provider_message_id": provider_message_id},
+            correlation_id=correlation_id,
+        )
+    journey_key = f"lead:{lead_id}"
+    linked = db.scalar(
+        select(JourneyLink.id).where(
+            JourneyLink.tenant_id == tenant_id,
+            JourneyLink.journey_key == journey_key,
+            JourneyLink.entity_type == "email_message",
+            JourneyLink.entity_id == message_id,
+            JourneyLink.deleted_at.is_(None),
+        )
+    )
+    if linked is None:
+        db.add(
+            JourneyLink(
+                tenant_id=tenant_id,
+                created_by=actor_id,
+                journey_key=journey_key,
+                entity_type="email_message",
+                entity_id=message_id,
+                role="acknowledgement",
+            )
+        )
+
+
+def retry_retrying_sends(db: Session, *, tenant_id: UUID | None = None, limit: int = 25) -> int:
+    hold_stale_external_work(db, tenant_id=tenant_id)
+    db.flush()
+    now = datetime.now(UTC)
+    stmt = select(EmailMessage).where(
+        EmailMessage.deleted_at.is_(None),
+        EmailMessage.status == "RETRYING",
+        EmailMessage.approval_id.is_not(None),
+        EmailMessage.next_retry_at.is_not(None),
+        EmailMessage.next_retry_at <= now,
+    )
+    if tenant_id is not None:
+        stmt = stmt.where(EmailMessage.tenant_id == tenant_id)
+    rows = db.scalars(stmt.limit(limit)).all()
     count = 0
     for row in rows:
         approval = db.get(AIApproval, row.approval_id)

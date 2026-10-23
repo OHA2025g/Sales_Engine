@@ -1,5 +1,5 @@
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
@@ -472,7 +472,11 @@ def test_extra_links_stay_beside_the_form_and_are_written_into_the_text(client: 
 
     monkeypatch.setattr("app.services.social.get_social_publisher", lambda channel: _Publisher())
     headers = login(client)
-    created_form = client.post("/api/v1/acquisition/form-keys", headers=headers, json={"name": "Campus visit"})
+    created_form = client.post(
+        "/api/v1/acquisition/form-keys",
+        headers=headers,
+        json={"name": f"Campus visit {uuid4().hex[:8]}"},
+    )
     assert created_form.status_code == 200, created_form.text
     form = created_form.json()["data"]
     posted = client.post(

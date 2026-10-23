@@ -1,5 +1,6 @@
 "use client";
 
+import { CommandOperations } from "@/components/command-operations";
 import { Icon } from "@/components/icon";
 import { PageHeader } from "@/components/page-header";
 import { DeniedState, ErrorState, LoadingState } from "@/components/states";
@@ -66,6 +67,7 @@ export default function FlowPage() {
           </section>
         ))}
       </div>
+      <CommandOperations />
       <div className="section-gap">
         <section className="panel">
           <header className="panel-head">

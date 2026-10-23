@@ -1,9 +1,14 @@
 from fastapi.testclient import TestClient
 
+from app.providers.lead_discovery import MockLeadDiscoveryProvider
 from tests.conftest import login
 
 
-def test_autonomous_run_persists_and_queues_only_consented_sends(client: TestClient) -> None:
+def test_autonomous_run_persists_and_queues_only_consented_sends(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.discovery.get_lead_discovery_provider",
+        lambda *_args, **_kwargs: MockLeadDiscoveryProvider(),
+    )
     headers = login(client)
     no_consent = client.post(
         "/api/v1/leads",

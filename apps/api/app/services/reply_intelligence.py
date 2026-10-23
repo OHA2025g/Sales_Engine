@@ -35,13 +35,13 @@ def _keyword_category(text: str) -> ReplyCategory | None:
     body = text.lower()
     if any(token in body for token in ("unsubscribe", "remove me", "stop emailing", "do not contact", "opt out")):
         return "UNSUBSCRIBE"
-    if any(token in body for token in ("out of office", "automatic reply", "on leave", "parental leave")):
+    if any(token in body for token in ("out of office", "on leave", "parental leave")):
         return "OUT_OF_OFFICE"
     if any(token in body for token in ("wrong person", "not the right person", "no longer with")):
         return "WRONG_PERSON"
     if any(token in body for token in ("not now", "next quarter", "revisit later", "too busy")):
         return "NOT_NOW"
-    if any(token in body for token in ("let's meet", "lets meet", "book time", "schedule a call", "available to meet")):
+    if any(token in body for token in ("let's meet", "lets meet", "can we meet", "could we meet", "book time", "schedule a call", "available to meet")):
         return "MEETING_REQUEST"
     if any(token in body for token in ("interested", "sounds good", "tell me more", "send more")):
         return "POSITIVE_INTEREST"

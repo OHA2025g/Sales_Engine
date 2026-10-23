@@ -109,6 +109,8 @@ def reject_delivery(db: Session, event: DomainEvent, reason: str, *, actor_id: U
 
 
 def replay_event(db: Session, event: DomainEvent, *, actor_id: UUID | None = None) -> str:
+    if event.delivery_status == "held":
+        return "Held work stays in review. Replay does not release it."
     if event.delivery_status not in {"dead", "retry", "rejected"}:
         return "Event is not waiting for replay."
     event.processed_at = None

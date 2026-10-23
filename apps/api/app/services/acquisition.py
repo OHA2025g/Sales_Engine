@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.acquisition import DedupeReview, InboundCapture
 from app.models.crm import Account, Contact, Lead
+from app.services.assessment import FREE_MAIL_DOMAINS
 from app.services.audit import emit_event
 from app.services.scoring import score_lead
 
@@ -84,6 +85,75 @@ def hold_interest(
     return capture
 
 
+def _fill_blank(row: object, field: str, value: str) -> None:
+    if value and not getattr(row, field):
+        setattr(row, field, value)
+
+
+def _resolve_capture_identity(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    payload: dict,
+    email: str,
+    domain: str,
+    contact: Contact | None,
+) -> tuple[Account | None, Contact]:
+    account = None
+    company_name = str(payload.get("company_name") or "").strip()
+    if company_name:
+        account = db.scalar(
+            select(Account).where(
+                Account.tenant_id == tenant_id,
+                Account.deleted_at.is_(None),
+                or_(Account.name.ilike(company_name), Account.domain == domain),
+            )
+        )
+    if account is None and domain and domain not in FREE_MAIL_DOMAINS:
+        account = db.scalar(
+            select(Account).where(Account.tenant_id == tenant_id, Account.domain == domain, Account.deleted_at.is_(None))
+        )
+    if account is None and company_name:
+        account = Account(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            name=company_name,
+            domain="" if domain in FREE_MAIL_DOMAINS else domain,
+            industry="",
+            employee_count=None,
+        )
+        db.add(account)
+        db.flush()
+    if contact is None:
+        contact = Contact(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            account_id=account.id if account else None,
+            first_name=str(payload.get("first_name") or "").strip(),
+            last_name=str(payload.get("last_name") or "").strip(),
+            email=email,
+            phone=str(payload.get("phone") or "")[:40],
+            title=str(payload.get("title") or ""),
+            consent_email=bool(payload.get("consent_email")),
+            opt_out=False,
+        )
+        db.add(contact)
+        db.flush()
+    else:
+        if account is not None and contact.account_id is None:
+            contact.account_id = account.id
+        phone = str(payload.get("phone") or "")[:40]
+        title = str(payload.get("title") or "")
+        if phone:
+            contact.phone = phone
+        if title:
+            contact.title = title
+        if payload.get("consent_email") and not contact.opt_out:
+            contact.consent_email = True
+    return account, contact
+
+
 def capture_inbound(
     db: Session,
     *,
@@ -104,19 +174,15 @@ def capture_inbound(
 
     lead = db.scalar(select(Lead).where(Lead.tenant_id == tenant_id, Lead.email == email, Lead.deleted_at.is_(None)))
     domain = _domain_from_email(email)
-    account = None
-    if payload.get("company_name"):
-        account = db.scalar(
-            select(Account).where(
-                Account.tenant_id == tenant_id,
-                Account.deleted_at.is_(None),
-                or_(Account.name.ilike(payload["company_name"]), Account.domain == domain),
-            )
-        )
-    if account is None and domain:
-        account = db.scalar(
-            select(Account).where(Account.tenant_id == tenant_id, Account.domain == domain, Account.deleted_at.is_(None))
-        )
+    account, contact = _resolve_capture_identity(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        payload=payload,
+        email=email,
+        domain=domain,
+        contact=contact,
+    )
 
     reviews: list[DedupeReview] = []
     created_lead = False
@@ -125,6 +191,7 @@ def capture_inbound(
             tenant_id=tenant_id,
             created_by=actor_id,
             account_id=account.id if account else None,
+            contact_id=contact.id,
             first_name=payload["first_name"],
             last_name=payload["last_name"],
             email=email,
@@ -174,8 +241,19 @@ def capture_inbound(
         )
         db.add(review)
         reviews.append(review)
+        if account is not None and lead.account_id is None:
+            lead.account_id = account.id
+        if lead.contact_id is None:
+            lead.contact_id = contact.id
+        _fill_blank(lead, "title", str(payload.get("title") or ""))
+        _fill_blank(lead, "utm_source", str(payload.get("utm_source") or ""))
+        _fill_blank(lead, "utm_medium", str(payload.get("utm_medium") or ""))
+        _fill_blank(lead, "utm_campaign", str(payload.get("utm_campaign") or ""))
+        _fill_blank(lead, "ad_id", str(payload.get("ad_id") or payload.get("ad_name") or ""))
+        if payload.get("consent_email") and not lead.opt_out:
+            lead.consent_email = True
 
-    if account is None and payload.get("company_name"):
+    if payload.get("company_name"):
         fuzzy = db.scalars(
             select(Account).where(
                 Account.tenant_id == tenant_id,
@@ -184,6 +262,8 @@ def capture_inbound(
             )
         ).all()
         for row in fuzzy[:3]:
+            if account is not None and row.id == account.id:
+                continue
             review = DedupeReview(
                 tenant_id=tenant_id,
                 created_by=actor_id,
@@ -232,7 +312,15 @@ def capture_inbound(
     for review in reviews:
         if review.right_type == "inbound_capture" and review.right_id == "pending":
             review.right_id = str(capture.id)
-    _ = correlation_id
+    emit_event(
+        db,
+        tenant_id=tenant_id,
+        event_type="enquiry.received",
+        entity_type="lead",
+        entity_id=str(lead.id),
+        payload={"capture_id": str(capture.id), "source": capture.source},
+        correlation_id=correlation_id,
+    )
     return capture, lead, reviews
 
 

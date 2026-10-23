@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.db.session import get_session
-from app.models.identity import User
+from app.models.crm import Account, Lead, Opportunity
+from app.models.execution import JourneyLink
+from app.models.identity import DomainEvent, User
 from app.models.lifecycle import MeetingRecord
 from app.models.ml import ModelVersion
 from app.models.signals import MLFeatureSnapshot
@@ -337,13 +339,66 @@ def test_promote_rollback_and_delayed_evaluation(client: TestClient) -> None:
         restored = rollback_champion(db, tenant_id=user.tenant_id, actor_id=user.id, task_key="LEAD_CONVERSION", reason="keep rules")
         assert restored.is_rules == 1
         as_of = datetime.now(UTC) - timedelta(days=200)
+        observed_lead_id = client.get("/api/v1/leads", headers=headers).json()["data"][0]["id"]
+        observed_lead = db.get(Lead, UUID(observed_lead_id))
+        assert observed_lead is not None
+        if observed_lead.account_id is None:
+            observed_account = Account(
+                tenant_id=user.tenant_id,
+                created_by=user.id,
+                name="Observed loss",
+                domain=f"loss-{observed_lead_id[:8]}.example",
+            )
+            db.add(observed_account)
+            db.flush()
+            observed_lead.account_id = observed_account.id
+        lost = Opportunity(
+            tenant_id=user.tenant_id,
+            created_by=user.id,
+            account_id=observed_lead.account_id,
+            name="Observed closed lost",
+            stage="closed_lost",
+        )
+        db.add(lost)
+        db.flush()
+        journey_key = f"lead:{observed_lead.id}"
+        db.add(
+            JourneyLink(
+                tenant_id=user.tenant_id,
+                created_by=user.id,
+                journey_key=journey_key,
+                entity_type="lead",
+                entity_id=str(observed_lead.id),
+                role="source",
+            )
+        )
+        db.add(
+            JourneyLink(
+                tenant_id=user.tenant_id,
+                created_by=user.id,
+                journey_key=journey_key,
+                entity_type="opportunity",
+                entity_id=str(lost.id),
+                role="sales_handoff",
+            )
+        )
+        db.add(
+            DomainEvent(
+                tenant_id=user.tenant_id,
+                event_type="deal.lost",
+                entity_type="opportunity",
+                entity_id=str(lost.id),
+                created_at=as_of + timedelta(days=5),
+            )
+        )
+        db.flush()
         pred = persist_prediction(
             db,
             tenant_id=user.tenant_id,
             actor_id=user.id,
             task_key="LEAD_CONVERSION",
             entity_type="lead",
-            entity_id=client.get("/api/v1/leads", headers=headers).json()["data"][0]["id"],
+            entity_id=observed_lead_id,
             result=PredictionResult("negative", 0.2, 50, "rules-champion", "rules", None, {}, "SHADOW"),
             snapshot=None,
             execution_mode="SHADOW",

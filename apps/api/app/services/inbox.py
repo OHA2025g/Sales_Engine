@@ -172,6 +172,7 @@ def persist_inbound(
         status="SENT",
         received_at=inbound.received_at,
         lead_id=lead.id if lead else None,
+        header_json=json.dumps(inbound.headers or {}),
     )
     try:
         with db.begin_nested():
@@ -242,6 +243,7 @@ def process_inbox_event(db: Session, event: ProviderInboxEvent, *, actor_id: UUI
                 payload=payload if isinstance(payload, dict) else {},
             )
         else:
+            raw_headers = payload.get("headers") if isinstance(payload.get("headers"), dict) else {}
             inbound = InboundEmail(
                 provider_message_id=str(payload.get("provider_message_id") or event.external_id),
                 thread_id=str(payload.get("thread_id") or ""),
@@ -251,6 +253,7 @@ def process_inbox_event(db: Session, event: ProviderInboxEvent, *, actor_id: UUI
                 body_text=str(payload.get("body_text") or ""),
                 received_at=datetime.now(UTC),
                 history_id=str(payload.get("history_id") or ""),
+                headers={str(key): str(value) for key, value in raw_headers.items()},
             )
             persist_inbound(db, tenant_id=event.tenant_id, actor_id=actor_id, inbound=inbound, provider=event.provider)
         event.processed_at = datetime.now(UTC)

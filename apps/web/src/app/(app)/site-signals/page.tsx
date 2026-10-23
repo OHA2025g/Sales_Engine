@@ -100,7 +100,7 @@ export default function SiteSignalsPage() {
   const free = signals.filter((signal) => signal.collectable).map((signal) => signal.code);
   const confirmed = signals.filter((signal) => signal.status === "confirmed").length;
   const proposed = signals.filter((signal) => signal.status === "proposed").length;
-  const grouped = CATEGORIES.map(([id, label]) => ({
+  const grouped: { id: string; label: string; signals: SignalRow[] }[] = CATEGORIES.map(([id, label]) => ({
     id,
     label,
     signals: signals.filter((signal) => signal.category === id),

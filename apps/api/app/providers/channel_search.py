@@ -307,7 +307,7 @@ def overall_status(channels: list[ChannelOutcome]) -> str:
     modes = {channel.mode for channel in channels}
     if modes == {"not_configured"}:
         return "not_configured"
-    if all(channel.mode == "live" for channel in channels):
+    if channels and all(channel.mode == "live" and channel.hits for channel in channels):
         return "completed"
     if any(channel.hits for channel in channels) or "live" in modes:
         return "partial"

@@ -79,12 +79,20 @@ class MockEmbeddingProvider(EmbeddingProvider):
 
 
 class NotConfiguredLLMProvider(LLMProvider):
+    def __init__(
+        self,
+        reason: str = "[NOT_CONFIGURED LLM] GEMINI_API_KEY is missing. No model was called.",
+        *,
+        provider: str = "gemini",
+    ) -> None:
+        self._reason = reason
+        self._provider = provider
+
     def complete(self, prompt: str, *, system: str, model: str | None = None, reasoning: bool = False) -> CompletionResult:
         _ = (prompt, system, reasoning)
-        text = "[NOT_CONFIGURED LLM] GEMINI_API_KEY is missing. No model was called."
         return CompletionResult(
-            text=text,
-            provider="gemini",
+            text=self._reason,
+            provider=self._provider,
             model=model or "not-configured",
             input_tokens=0,
             output_tokens=0,
@@ -222,14 +230,22 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
 
 def get_llm_provider(db: Session | None = None, tenant_id: UUID | None = None) -> LLMProvider:
     settings = get_settings()
+    provider_name = (settings.llm_provider or "").strip().lower()
+    if provider_name not in {"gemini", "mock"}:
+        return NotConfiguredLLMProvider(
+            f"[NOT_CONFIGURED LLM] Provider '{provider_name or 'unset'}' is not implemented. No model was called.",
+            provider="not-configured",
+        )
     if db is not None and tenant_id is not None:
         resolved = resolve_channel(db, tenant_id, "gemini")
-        if resolved.mode == "LIVE" and resolved.secrets.get("access_token"):
+        if provider_name == "gemini" and resolved.mode == "LIVE" and resolved.secrets.get("access_token"):
             return GeminiLLMProvider(api_key=resolved.secrets["access_token"])
-        if resolved.mode == "NOT_CONFIGURED" or settings.llm_provider == "gemini":
+        if provider_name == "mock" and resolved.mode not in {"LIVE", "NOT_CONFIGURED"}:
+            return MockLLMProvider()
+        if resolved.mode == "NOT_CONFIGURED" or provider_name == "gemini":
             return NotConfiguredLLMProvider()
         return MockLLMProvider()
-    if settings.llm_provider == "gemini":
+    if provider_name == "gemini":
         if settings.gemini_api_key:
             return GeminiLLMProvider()
         return NotConfiguredLLMProvider()

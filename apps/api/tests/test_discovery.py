@@ -457,6 +457,7 @@ def test_valid_search_results_persist_provenance(client: TestClient, monkeypatch
             )
 
     monkeypatch.setattr("app.services.discovery.get_lead_discovery_provider", lambda *args, **kwargs: SearchFixture())
+    monkeypatch.setattr("app.services.discovery.is_circuit_open", lambda *args, **kwargs: False)
     headers = login(client)
     run = client.post("/api/v1/discovery/run", headers=headers, json={})
     assert run.status_code == 200, run.text

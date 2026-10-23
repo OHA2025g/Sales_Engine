@@ -363,6 +363,7 @@ def profile_accounts(
         db.scalars(
             select(Account)
             .where(Account.tenant_id == tenant_id, Account.deleted_at.is_(None))
+            .order_by(Account.created_at.desc())
             .limit(CANDIDATE_LIMIT)
         ).all()
     )

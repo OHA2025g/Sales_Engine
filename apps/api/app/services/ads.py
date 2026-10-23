@@ -16,6 +16,7 @@ from app.providers.ads import AdsMetrics, get_ads_provider
 from app.services.audit import emit_event, write_audit
 from app.services.autopilot_settings import get_or_create_settings
 from app.services.consent import email_block_reason
+from app.services.demo_guard import external_execution_block
 from app.services.idempotency import claim_key
 from app.services.provider_metrics import ADS_LAUNCH_FAILURES, ADS_LAUNCHES
 from app.services.provider_ops import (
@@ -131,6 +132,9 @@ def queue_campaign_launch(
 
 
 def execute_ads_spend(db: Session, *, tenant_id: UUID, actor_id: UUID, approval: AIApproval) -> str:
+    blocked = external_execution_block(db, tenant_id=tenant_id, action="ads.launch")
+    if blocked:
+        return blocked
     payload = json.loads(approval.payload_json or "{}")
     campaign_id = payload.get("campaign_id")
     if not campaign_id:
@@ -169,6 +173,20 @@ def execute_ads_spend(db: Session, *, tenant_id: UUID, actor_id: UUID, approval:
         return "Blocked by provider. Campaign was not launched."
     provider = get_ads_provider(campaign.channel, db, tenant_id)
     health = provider.health()
+    if getattr(provider, "_sandbox", False):
+        block_action(action, reason="Sandbox cannot activate a campaign or spend.", failure_class="CONFIGURATION")
+        campaign.status = "draft"
+        record_provider_result(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            provider=health.provider,
+            action="ads.launch",
+            ok=False,
+            failure_class="CONFIGURATION",
+            error="Sandbox cannot activate a campaign or spend.",
+        )
+        return "Sandbox cannot activate a campaign or spend. No activation request was sent."
     if health.is_mock or not health.connected:
         block_action(action, reason=health.reason, failure_class="CONFIGURATION")
         campaign.status = "draft"
@@ -201,8 +219,16 @@ def execute_ads_spend(db: Session, *, tenant_id: UUID, actor_id: UUID, approval:
     if result.ok and result.external_id:
         if result.provider_status == "PAUSED":
             activated = provider.activate_campaign(external_id=result.external_id)
-            if activated.ok:
-                result = activated
+            if not activated.ok:
+                campaign.status = "draft"
+                fail_action(
+                    action,
+                    failure_class=activated.failure_class or "CONFIGURATION",
+                    error=activated.reason or "Activation was refused.",
+                    retryable=False,
+                )
+                return activated.reason or "Campaign was not launched. No spend was recorded."
+            result = activated
         campaign.status = "launched"
         campaign.external_campaign_id = result.external_id
         campaign.provider = result.provider

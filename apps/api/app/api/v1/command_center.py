@@ -15,6 +15,7 @@ from app.services.command_center import (
     recent_activities,
 )
 from app.services.lifecycle import lifecycle_pulse
+from app.services.operations import operations_view
 
 router = APIRouter(prefix="/command-center", tags=["command-center"])
 
@@ -44,6 +45,14 @@ def get_overview(
             "lifecycle": lifecycle_pulse(db, ctx.tenant_id),
         }
     )
+
+
+@router.get("/operations")
+def get_operations(
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("command_center.read"))],
+) -> Envelope[dict]:
+    return Envelope(data=operations_view(db, ctx.tenant_id))
 
 
 @router.get("/pipeline-mix", response_model=Envelope[list[StageMixOut]])

@@ -1,17 +1,22 @@
 from decimal import Decimal
 from uuid import UUID
 
+import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.db.session import get_session
 from app.models.lifecycle import Campaign
-from app.providers.ads import AdsCampaignResult, AdsHealth, AdsMetrics, AdsSpend
+from app.providers.ads import AdsCampaignResult, AdsHealth, AdsMetrics, AdsSpend, MetaAdsProvider, MockAdsProvider
 from app.services.ads import derived_metrics, sync_campaign
 from tests.conftest import login
 
 
-def test_launch_queues_approval_and_mock_does_not_invent_spend(client: TestClient) -> None:
+def test_launch_queues_approval_and_mock_does_not_invent_spend(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.ads.get_ads_provider",
+        lambda channel, *args, **kwargs: MockAdsProvider(channel or "linkedin"),
+    )
     headers = login(client)
     created = client.post(
         "/api/v1/lifecycle/campaigns",
@@ -172,3 +177,41 @@ def test_outbound_campaign_cannot_launch(client: TestClient) -> None:
     campaign_id = created.json()["data"]["id"]
     launch = client.post(f"/api/v1/lifecycle/campaigns/{campaign_id}/launch", headers=headers)
     assert launch.status_code == 409
+
+
+def test_sandbox_does_not_send_an_activation_request(client: TestClient, monkeypatch) -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(f"{request.method} {request.url}")
+        return httpx.Response(500, json={"error": "unreachable"})
+
+    provider = MetaAdsProvider(
+        token="sandbox-token",
+        ad_account_id="123",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sandbox=True,
+    )
+    monkeypatch.setattr("app.services.ads.get_ads_provider", lambda channel, *args, **kwargs: provider)
+    headers = login(client)
+    created = client.post(
+        "/api/v1/lifecycle/campaigns",
+        headers=headers,
+        json={"name": "Sandbox hunt", "channel": "instagram", "objective": "pipeline", "budget": "2500"},
+    )
+    campaign_id = created.json()["data"]["id"]
+    launch = client.post(f"/api/v1/lifecycle/campaigns/{campaign_id}/launch", headers=headers)
+    assert launch.status_code == 200, launch.text
+    decided = client.post(
+        f"/api/v1/ai/approvals/{launch.json()['data']['approval_id']}/decide",
+        headers=headers,
+        json={"decision": "approve", "note": "sandbox"},
+    )
+    assert decided.status_code == 200, decided.text
+    note = decided.json()["data"]["decision_note"].lower()
+    assert "sandbox" in note
+    assert "no activation request" in note
+    detail = client.get(f"/api/v1/lifecycle/campaigns/{campaign_id}", headers=headers).json()["data"]
+    assert detail["status"] != "launched"
+    assert Decimal(str(detail["spent"])) == Decimal("0")
+    assert seen == []

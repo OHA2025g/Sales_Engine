@@ -20,6 +20,7 @@ from app.services.autopilot_settings import (
     in_quiet_hours,
 )
 from app.services.crm import add_activity
+from app.services.demo_guard import open_demo_scope
 from app.services.discovery import run_discovery
 from app.services.idempotency import claim_key, lock_row
 from app.services.lifecycle import score_deal
@@ -130,6 +131,7 @@ def run_autonomous_cycle(
         run.summary = "Autopilot is disabled for this tenant."
         return run
 
+    scope = open_demo_scope(db, tenant_id)
     discovery = {
         "created": 0,
         "skipped": {},
@@ -141,7 +143,9 @@ def run_autonomous_cycle(
         "candidate_count": 0,
         "icp_name": "",
     }
-    if (
+    if scope is not None:
+        discovery["reason"] = "Automatic discovery is outside the controlled demonstration."
+    elif (
         settings.discovery_enabled
         and not settings.discovery_channel_paused
         and not at_daily_lead_cap(db, settings)
@@ -212,6 +216,9 @@ def run_autonomous_cycle(
         state = get_state(db, tenant_id=tenant_id, entity_type="lead", entity_id=str(lead.id))
         if state is None or not state.paused_at:
             if state is None:
+                buyer = (scope.buyer_email if scope is not None else "").strip().casefold()
+                if scope is not None and (lead.email or "").strip().casefold() != buyer:
+                    continue
                 emit_event(
                     db,
                     tenant_id=tenant_id,

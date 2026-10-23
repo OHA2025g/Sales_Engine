@@ -50,6 +50,7 @@ class EmailMessage(Base, TenantOwnedMixin):
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     classification: Mapped[str] = mapped_column(String(40), default="", nullable=False)
     classification_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    header_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     last_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
 

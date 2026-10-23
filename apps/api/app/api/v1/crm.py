@@ -9,6 +9,14 @@ from app.core.deps import AuthContext, require_permission
 from app.db.session import get_db
 from app.models.crm import ICP, Account, Activity, Contact, Customer, Lead, Opportunity, Task
 from app.models.identity import User
+from app.schemas.assessment import (
+    AssessmentOut,
+    DiscoveryBookingIn,
+    DiscoveryBookingOut,
+    FactOut,
+    SalesQualificationIn,
+    SalesQualificationOut,
+)
 from app.schemas.common import Envelope, Meta
 from app.schemas.crm import (
     AccountContextOut,
@@ -32,12 +40,23 @@ from app.schemas.crm import (
     TaskOut,
 )
 from app.schemas.pilot import ChurnIn, CloseLostIn
+from app.services.assessment import Fact, assess_and_store, handoff_sales_opportunity
 from app.services.audit import emit_event, write_audit
-from app.services.crm import STAGE_PROBABILITY, add_activity, assign_lead, close_won, latest_lead_score, list_lead_assignees
+from app.services.autopilot_settings import get_or_create_settings
+from app.services.calendar_booking import confirm_discovery_slot
+from app.services.crm import (
+    STAGE_PROBABILITY,
+    add_activity,
+    assign_lead,
+    close_won,
+    latest_lead_score,
+    list_lead_assignees,
+)
 from app.services.enrichment import enrich_owned_lead
 from app.services.nba import generate_for_lead, generate_for_opportunity, steps_for_lead
 from app.services.orchestrator import process_pending_events
 from app.services.outcomes import close_lost, mark_churned
+from app.services.qualification import qualify_lead
 from app.services.query import get_owned, paginate
 from app.services.scoring import score_lead
 
@@ -433,6 +452,138 @@ def assign_lead_owner(
     db.commit()
     db.refresh(row)
     return Envelope(data=_lead_out(db, row))
+
+
+@router.get("/leads/{lead_id}/assessment", response_model=Envelope[AssessmentOut])
+def get_lead_assessment(
+    lead_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("leads.read"))],
+) -> Envelope[AssessmentOut]:
+    lead = get_owned(db, Lead, ctx.tenant_id, lead_id)
+    settings = get_or_create_settings(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
+    decision = assess_and_store(
+        db,
+        tenant_id=ctx.tenant_id,
+        actor_id=ctx.user.id,
+        lead=lead,
+        settings=settings,
+        correlation_id=ctx.correlation_id,
+    )
+    db.commit()
+    return Envelope(data=_assessment_out(lead.id, decision))
+
+
+@router.post("/leads/{lead_id}/sales-qualification", response_model=Envelope[SalesQualificationOut])
+def qualify_lead_for_sales(
+    lead_id: UUID,
+    body: SalesQualificationIn,
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("leads.write"))],
+) -> Envelope[SalesQualificationOut]:
+    lead = get_owned(db, Lead, ctx.tenant_id, lead_id)
+    settings = get_or_create_settings(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
+    overrides = [
+        Fact(
+            facet=fact.facet,
+            fact_class=fact.fact_class,
+            value=fact.value,
+            relation=fact.relation,
+            source=fact.source or "operator",
+            excerpt=fact.excerpt,
+        )
+        for fact in body.facts
+    ]
+    decision = qualify_lead(
+        db,
+        tenant_id=ctx.tenant_id,
+        actor_id=ctx.user.id,
+        lead=lead,
+        settings=settings,
+        correlation_id=ctx.correlation_id,
+        fact_overrides=overrides,
+    )
+    opportunity = None
+    if decision["sales_qualified"]:
+        opportunity = handoff_sales_opportunity(
+            db,
+            tenant_id=ctx.tenant_id,
+            actor_id=ctx.user.id,
+            lead=lead,
+            correlation_id=ctx.correlation_id,
+            decision_id=str(decision.get("decision_id") or ""),
+        )
+    write_audit(
+        db,
+        tenant_id=ctx.tenant_id,
+        actor_id=ctx.user.id,
+        action="lead.sales_qualification",
+        entity_type="lead",
+        entity_id=str(lead.id),
+        after={"sales_qualified": decision["sales_qualified"], "opportunity_id": str(opportunity.id) if opportunity else ""},
+        correlation_id=ctx.correlation_id,
+    )
+    db.commit()
+    return Envelope(
+        data=SalesQualificationOut(
+            sales_qualified=bool(decision["sales_qualified"]),
+            opportunity_id=opportunity.id if opportunity is not None else None,
+            next_action=str(decision["next_action"]),
+        )
+    )
+
+
+@router.post("/leads/{lead_id}/discovery-booking", response_model=Envelope[DiscoveryBookingOut])
+def book_discovery(
+    lead_id: UUID,
+    body: DiscoveryBookingIn,
+    db: Annotated[Session, Depends(get_db)],
+    ctx: Annotated[AuthContext, Depends(require_permission("leads.write"))],
+) -> Envelope[DiscoveryBookingOut]:
+    lead = get_owned(db, Lead, ctx.tenant_id, lead_id)
+    result = confirm_discovery_slot(
+        db,
+        tenant_id=ctx.tenant_id,
+        actor_id=ctx.user.id,
+        lead=lead,
+        start_at=body.start_at,
+        end_at=body.end_at,
+        timezone=body.timezone,
+    )
+    if result["status"] == "rejected":
+        raise HTTPException(status_code=422, detail=result["detail"])
+    if result["status"] == "missing_offer":
+        raise HTTPException(status_code=409, detail=result["detail"])
+    write_audit(
+        db,
+        tenant_id=ctx.tenant_id,
+        actor_id=ctx.user.id,
+        action="lead.discovery_booking",
+        entity_type="lead",
+        entity_id=str(lead.id),
+        after=result,
+        correlation_id=ctx.correlation_id,
+    )
+    db.commit()
+    return Envelope(data=DiscoveryBookingOut.model_validate(result))
+
+
+def _assessment_out(lead_id: UUID, decision: dict) -> AssessmentOut:
+    return AssessmentOut(
+        lead_id=lead_id,
+        identity=decision["identity"],
+        facts=[FactOut.model_validate(fact) for fact in decision["facts"]],
+        coverage_known=decision["coverage_known"],
+        coverage_required=decision["coverage_required"],
+        confidence=decision["confidence"],
+        response_eligible=decision["response_eligible"],
+        meeting_eligible=decision["meeting_eligible"],
+        sales_qualified=decision["sales_qualified"],
+        not_a_fit=decision["not_a_fit"],
+        next_action=decision["next_action"],
+        rules_version=decision["rules_version"],
+        evidence_ids=[UUID(value) for value in decision.get("evidence_ids", [])],
+    )
 
 
 @router.get("/leads/{lead_id}", response_model=Envelope[LeadOut])

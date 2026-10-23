@@ -141,6 +141,7 @@ def apply_settings_update(db: Session, settings: AutopilotSettings, payload: dic
         "allow_deployment_provider_defaults",
         "allow_unscanned_uploads",
         "whatsapp_channel_paused",
+        "sales_rules_json",
     }
     changed = False
     for key, value in payload.items():

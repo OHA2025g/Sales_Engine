@@ -83,7 +83,7 @@ def choose_detail(stored: str, meta: str, body: str) -> str:
         index = folded.lower().find(needle.lower())
         if index >= 0:
             detail = _trim(folded[index:])
-            if len(detail) > len(stored) + 40:
+            if len(detail) > len(needle):
                 return detail
     description = _trim(meta)
     if len(description) > len(stored) + 40:

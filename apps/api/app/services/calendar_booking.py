@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.ai.runtime import meeting_prep
 from app.models.ai import AIApproval, AIRecommendation
 from app.models.crm import Account, Lead, Opportunity
+from app.models.execution import JourneyLink
 from app.models.identity import User
 from app.models.lifecycle import MeetingRecord
 from app.providers.calendar import BusyPeriod, get_calendar_provider
@@ -16,6 +17,7 @@ from app.services.audit import emit_event
 from app.services.automation_state import upsert_state
 from app.services.autopilot_settings import get_or_create_settings
 from app.services.crm import add_activity
+from app.services.demo_guard import external_execution_block
 from app.services.nba import generate_for_lead
 from app.services.rbac import user_permissions
 
@@ -131,6 +133,9 @@ def book_meeting(
         return "Meeting was not booked: start_at and end_at are required."
     start = datetime.fromisoformat(str(start_raw).replace("Z", "+00:00"))
     end = datetime.fromisoformat(str(end_raw).replace("Z", "+00:00"))
+    blocked = external_execution_block(db, tenant_id=tenant_id, action="calendar.book", recipient=lead.email or "")
+    if blocked:
+        return blocked
     provider = get_calendar_provider(db, tenant_id)
     health = provider.health()
     if not health.connected:
@@ -153,6 +158,7 @@ def book_meeting(
     duplicate = meeting_by_event(db, tenant_id, result.provider, result.provider_event_id)
     if duplicate is not None:
         return f"Provider {duplicate.provider} already booked {duplicate.provider_event_id}."
+    attendees = [address for address in [lead.email, owner.email] if address]
     row = MeetingRecord(
         tenant_id=tenant_id,
         created_by=actor_id,
@@ -172,8 +178,11 @@ def book_meeting(
         calendar_account=owner.email,
         summary=str(payload.get("summary") or ""),
         next_steps="Prepare for the meeting.",
+        insights_json=json.dumps({"attendees": attendees}),
     )
     db.add(row)
+    db.flush()
+    _link_meeting(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, meeting_id=str(row.id))
     lead.status = "meeting_scheduled"
     add_activity(
         db,
@@ -299,6 +308,146 @@ def cancel_meeting(db: Session, *, tenant_id: UUID, actor_id: UUID, approval: AI
         actor_type="ai",
     )
     return f"Provider {result.provider} cancelled {row.provider_event_id}."
+
+
+def offer_discovery_meeting(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    lead: Lead,
+    run_id: UUID | None = None,
+) -> dict:
+    provider = get_calendar_provider(db, tenant_id)
+    health = provider.health()
+    if not health.connected:
+        upsert_state(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            entity_type="lead",
+            entity_id=str(lead.id),
+            state="WAITING_FOR_CONFIGURATION",
+            last_action="meeting_offer",
+            next_action="connect_calendar",
+            blocked_reason=health.reason,
+            run_id=run_id,
+        )
+        return {"status": "waiting_for_configuration", "waiting_reason": health.reason, "slots": []}
+    approval = queue_meeting_proposal(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, run_id=run_id)
+    if approval is None:
+        return {"status": "waiting", "waiting_reason": "No open working-hour slots on the connected calendar.", "slots": []}
+    payload = json.loads(approval.payload_json or "{}")
+    return {"status": "proposed", "approval_id": str(approval.id), "slots": payload.get("slots") or [], "waiting_reason": ""}
+
+
+def confirm_discovery_slot(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    lead: Lead,
+    start_at: str,
+    end_at: str,
+    timezone: str = "UTC",
+) -> dict:
+    approval = db.scalar(
+        select(AIApproval)
+        .where(
+            AIApproval.tenant_id == tenant_id,
+            AIApproval.entity_id == str(lead.id),
+            AIApproval.idempotency_key.like("calendar.propose:%"),
+            AIApproval.deleted_at.is_(None),
+        )
+        .order_by(AIApproval.created_at.desc())
+    )
+    if approval is None:
+        return {"status": "missing_offer", "detail": "Offer calendar slots before confirming one."}
+    payload = json.loads(approval.payload_json or "{}")
+    slots = payload.get("slots") or []
+    chosen = next((slot for slot in slots if slot.get("start") == start_at and slot.get("end") == end_at), None)
+    if chosen is None:
+        return {"status": "rejected", "detail": "That time was not one of the offered slots."}
+    provider = get_calendar_provider(db, tenant_id)
+    if not provider.health().connected:
+        return {"status": "waiting_for_configuration", "detail": provider.health().reason}
+    booking = {
+        **payload,
+        "start_at": start_at,
+        "end_at": end_at,
+        "timezone": timezone or chosen.get("timezone") or "UTC",
+        "title": f"Discovery meeting with {lead.email or lead.company_name}",
+    }
+    note = book_meeting(db, tenant_id=tenant_id, actor_id=actor_id, approval=approval, payload=booking)
+    if not note.startswith("Provider"):
+        return {"status": "not_booked", "detail": note}
+    meeting = db.scalar(
+        select(MeetingRecord)
+        .where(MeetingRecord.tenant_id == tenant_id, MeetingRecord.lead_id == lead.id, MeetingRecord.deleted_at.is_(None))
+        .order_by(MeetingRecord.created_at.desc())
+    )
+    return {
+        "status": "booked",
+        "detail": note,
+        "meeting_id": str(meeting.id) if meeting is not None else "",
+        "provider_event_id": meeting.provider_event_id if meeting is not None else "",
+    }
+
+
+def reschedule_booked_meeting(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    meeting_id: UUID,
+    start_at: str,
+    end_at: str,
+    timezone: str = "",
+) -> str:
+    approval = AIApproval(tenant_id=tenant_id, created_by=actor_id, action_type="calendar.reschedule", title="Reschedule", payload_json="{}", status="approved")
+    return reschedule_meeting(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        approval=approval,
+        payload={"meeting_id": str(meeting_id), "start_at": start_at, "end_at": end_at, "timezone": timezone},
+    )
+
+
+def cancel_booked_meeting(db: Session, *, tenant_id: UUID, actor_id: UUID, meeting_id: UUID) -> str:
+    approval = AIApproval(tenant_id=tenant_id, created_by=actor_id, action_type="calendar.cancel", title="Cancel", payload_json="{}", status="approved")
+    return cancel_meeting(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        approval=approval,
+        payload={"meeting_id": str(meeting_id)},
+    )
+
+
+def _link_meeting(db: Session, *, tenant_id: UUID, actor_id: UUID, lead: Lead, meeting_id: str) -> None:
+    journey_key = f"lead:{lead.id}"
+    existing = db.scalar(
+        select(JourneyLink.id).where(
+            JourneyLink.tenant_id == tenant_id,
+            JourneyLink.journey_key == journey_key,
+            JourneyLink.entity_type == "meeting",
+            JourneyLink.entity_id == meeting_id,
+            JourneyLink.deleted_at.is_(None),
+        )
+    )
+    if existing is not None:
+        return
+    db.add(
+        JourneyLink(
+            tenant_id=tenant_id,
+            created_by=actor_id,
+            journey_key=journey_key,
+            entity_type="meeting",
+            entity_id=meeting_id,
+            role="discovery",
+        )
+    )
 
 
 def queue_meeting_proposal(

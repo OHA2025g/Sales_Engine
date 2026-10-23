@@ -13,9 +13,11 @@ from app.api.v1 import (
     discovery,
     imports,
     integrations,
+    journeys,
     lifecycle,
     market,
     ml,
+    operating_plans,
     pilot,
     post_sale,
     providers,
@@ -45,6 +47,8 @@ api_router.include_router(lifecycle.router)
 api_router.include_router(discovery.router)
 api_router.include_router(autonomy.router)
 api_router.include_router(integrations.router)
+api_router.include_router(journeys.router)
+api_router.include_router(operating_plans.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(public.router)
 api_router.include_router(post_sale.router)

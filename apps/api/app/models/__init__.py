@@ -11,6 +11,7 @@ from app.models.ai import (
     Prompt,
     ToolCall,
 )
+from app.models.assessment import AssessmentDecision, AssessmentEvidence, ExternalEffect
 from app.models.autonomy import (
     AutomationIdempotencyKey,
     AutonomousRun,
@@ -130,6 +131,7 @@ from app.models.ml import (
     RecommendationFeedback,
     TrainingExample,
 )
+from app.models.operating_plan import CreativeVersion, DemoScope, OperatingPlan
 from app.models.pilot import (
     AutopilotSettingsVersion,
     DataQualityIssue,
@@ -216,6 +218,9 @@ __all__ = [
     "TriggerEvent",
     "InboundCapture",
     "DedupeReview",
+    "AssessmentEvidence",
+    "AssessmentDecision",
+    "ExternalEffect",
     "Campaign",
     "SocialPost",
     "SocialImage",
@@ -227,6 +232,9 @@ __all__ = [
     "SiteProfileCheck",
     "SellerProfile",
     "ContentDraft",
+    "OperatingPlan",
+    "CreativeVersion",
+    "DemoScope",
     "CampaignMember",
     "AbmPlay",
     "Sequence",

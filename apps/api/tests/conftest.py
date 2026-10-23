@@ -1,6 +1,11 @@
 import os
 
-os.environ["DATABASE_URL"] = "sqlite://"
+_postgres_test = os.environ.get("POSTGRES_RLS_ADMIN_URL", "").strip()
+if _postgres_test:
+    os.environ["DATABASE_URL"] = _postgres_test
+    os.environ["DATABASE_ADMIN_URL"] = _postgres_test
+else:
+    os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["ENVIRONMENT"] = "test"
 os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-prod")
 os.environ.setdefault("LLM_PROVIDER", "mock")
@@ -26,6 +31,14 @@ def client() -> TestClient:
     seed()
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def mock_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force labeled mock providers without changing the workspace .env."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "email_provider", "mock")
+    monkeypatch.setattr(settings, "calendar_provider", "mock")
 
 
 def login(client: TestClient, email: str = "admin@agrayian.demo") -> dict:

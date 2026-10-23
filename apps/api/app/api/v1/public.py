@@ -16,7 +16,7 @@ from app.schemas.common import Envelope
 from app.schemas.crm import LeadOut, LeadScoreOut
 from app.services.acquisition import capture_inbound, hold_interest, interest_is_eligible
 from app.services.crm import latest_lead_score
-from app.services.orchestrator import process_pending_events
+from app.services.outbox_notify import notify_outbox
 from app.services.public_forms import loads_form_fields, public_form_inputs, resolve_form_key
 from app.services.social_media import read_social_image
 
@@ -165,8 +165,8 @@ def public_capture(
         actor_id=actor.id,
         payload=payload,
     )
-    process_pending_events(db, tenant_id=key.tenant_id, actor_id=actor.id)
     db.commit()
+    notify_outbox()
     db.refresh(capture_row)
     if lead is not None:
         db.refresh(lead)

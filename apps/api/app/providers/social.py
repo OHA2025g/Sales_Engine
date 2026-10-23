@@ -352,6 +352,13 @@ class MetaSocialPublisher:
             )
         usable = image_url.strip()
         if usable and not instagram_can_fetch(usable):
+            if not image_bytes:
+                return SocialPublishResult(
+                    ok=False,
+                    provider="instagram",
+                    is_mock=False,
+                    reason="Instagram cannot fetch an image hosted on this machine. Paste a public image URL, or publish from a public https address.",
+                )
             usable = ""
         if not usable and image_bytes:
             hosted, problem = self._host_image(image_bytes)
