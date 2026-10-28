@@ -17,17 +17,17 @@ from app.models.ai import AIApproval
 from app.models.assessment import AssessmentDecision, AssessmentEvidence
 from app.models.autonomy import AutomationIdempotencyKey, AutonomousRun, AutonomousRunStep, AutopilotSettings
 from app.models.crm import Lead
-from app.models.identity import Tenant
-from app.models.lifecycle import Product
-from app.models.operating_plan import OperatingPlan
 from app.providers.email import get_email_provider
 from app.services.assessment import latest_decision
 from app.services.automation_state import upsert_state
+from app.services.demo_guard import external_execution_block
 from app.services.email_send import execute_email_send
 from app.services.grants import send_authorization
 from app.services.operations import connected_mailbox_address
+from app.services.product_context import context_for_lead
 
-CONTENT_VERSION = "ack-v1"
+CONTENT_VERSION = "ack-v2"
+_PRICE_WORDS = ("price", "pricing", "cost", "quote", "how much", "fee", "inr", "rupee", "₹")
 ASKS = {
     "industry": "What industry is the company in?",
     "employees": "About how many people work there?",
@@ -65,7 +65,7 @@ def prepare_acknowledgement(
     )
     if existing is not None and existing.status == "approved":
         return {"status": "already_sent", "approval_id": str(existing.id), "waiting_reason": ""}
-    body = _body(db, tenant_id, questions)
+    body = _body(db, tenant_id, lead, questions)
     provider = get_email_provider(db, tenant_id)
     health = provider.health()
     approval = existing or _approval(
@@ -90,6 +90,28 @@ def prepare_acknowledgement(
             reason=health.reason,
         )
         return {"status": "waiting_for_configuration", "approval_id": str(approval.id), "waiting_reason": health.reason}
+    scope_block = external_execution_block(
+        db,
+        tenant_id=tenant_id,
+        action="email.acknowledge",
+        recipient=lead.email or "",
+    )
+    if scope_block:
+        _wait(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            lead=lead,
+            run=run,
+            state="WAITING_FOR_AUTHORIZATION",
+            next_action="authorize_demonstration",
+            reason=scope_block,
+        )
+        return {
+            "status": "waiting_for_authorization",
+            "approval_id": str(approval.id),
+            "waiting_reason": scope_block,
+        }
     auth = send_authorization(db, tenant_id=tenant_id, settings=settings, action_type="email.acknowledge")
     if auth == "blocked":
         _wait(
@@ -275,43 +297,32 @@ def _unasked(db: Session, tenant_id: UUID, lead: Lead, decision: AssessmentDecis
     return pending
 
 
-def _body(db: Session, tenant_id: UUID, questions: list[str]) -> str:
-    product = _product_name(db, tenant_id)
-    lines = [f"Thanks for contacting {product}. We received your enquiry."]
-    if questions:
+def _price_requested(note: str) -> bool:
+    folded = note.casefold()
+    return any(word in folded for word in _PRICE_WORDS)
+
+
+def _body(db: Session, tenant_id: UUID, lead: Lead, questions: list[str]) -> str:
+    context = context_for_lead(db, tenant_id, lead)
+    name = context.customer_facing_name
+    if context.company_name and name:
+        lines = [f"Thanks for contacting {context.company_name} about {name}. We received your enquiry."]
+    elif name:
+        lines = [f"Thanks for contacting us about {name}. We received your enquiry."]
+    else:
+        lines = ["Thanks for your enquiry. We received it."]
+    note = (lead.notes or "").strip()
+    if note:
+        lines.append(f"You wrote: {note[:500]}")
+    if note and _price_requested(note):
+        price = context.price_line()
+        if price:
+            lines.append(price)
+    relevant = [facet for facet in questions if not (facet == "business_need" and note)]
+    if relevant:
         lines.append("")
-        lines.extend(ASKS[facet] for facet in questions)
+        lines.extend(ASKS[facet] for facet in relevant)
     return "\n".join(lines)
-
-
-def _product_name(db: Session, tenant_id: UUID) -> str:
-    plan = db.scalar(
-        select(OperatingPlan)
-        .where(OperatingPlan.tenant_id == tenant_id, OperatingPlan.deleted_at.is_(None))
-        .order_by(OperatingPlan.created_at.desc())
-    )
-    if plan is not None and plan.context_snapshot.strip():
-        try:
-            snapshot = json.loads(plan.context_snapshot)
-        except json.JSONDecodeError:
-            snapshot = {}
-        if isinstance(snapshot, dict) and str(snapshot.get("name") or "").strip():
-            return str(snapshot["name"]).strip()
-    if plan is not None and plan.product_id is not None:
-        selected = db.get(Product, plan.product_id)
-        if selected is not None and selected.tenant_id == tenant_id and selected.name.strip():
-            return selected.name.strip()
-    product = db.scalar(
-        select(Product)
-        .where(Product.tenant_id == tenant_id, Product.deleted_at.is_(None))
-        .order_by(Product.created_at.asc())
-    )
-    if product is not None and product.name.strip():
-        return product.name.strip()
-    tenant = db.get(Tenant, tenant_id)
-    if tenant is not None and tenant.name.strip():
-        return tenant.name.strip()
-    return "this workspace"
 
 
 def _approval(

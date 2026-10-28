@@ -34,6 +34,9 @@ class InboundCapture(Base, TenantOwnedMixin):
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     campaign_id: Mapped[UUID | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True)
     ad_id: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    creative_version_id: Mapped[UUID | None] = mapped_column(ForeignKey("creative_versions.id"), nullable=True)
+    operating_plan_id: Mapped[UUID | None] = mapped_column(ForeignKey("operating_plans.id"), nullable=True)
+    social_post_id: Mapped[UUID | None] = mapped_column(ForeignKey("social_posts.id"), nullable=True)
 
 
 class DedupeReview(Base, TenantOwnedMixin):

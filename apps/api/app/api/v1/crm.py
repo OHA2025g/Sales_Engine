@@ -52,6 +52,7 @@ from app.services.crm import (
     latest_lead_score,
     list_lead_assignees,
 )
+from app.services.discovery import workflow_fields
 from app.services.enrichment import enrich_owned_lead
 from app.services.nba import generate_for_lead, generate_for_opportunity, steps_for_lead
 from app.services.orchestrator import process_pending_events
@@ -577,6 +578,7 @@ def _assessment_out(lead_id: UUID, decision: dict) -> AssessmentOut:
         coverage_required=decision["coverage_required"],
         confidence=decision["confidence"],
         response_eligible=decision["response_eligible"],
+        outbound_eligible=bool(decision.get("outbound_eligible")),
         meeting_eligible=decision["meeting_eligible"],
         sales_qualified=decision["sales_qualified"],
         not_a_fit=decision["not_a_fit"],
@@ -592,7 +594,16 @@ def get_lead(
     db: Annotated[Session, Depends(get_db)],
     ctx: Annotated[AuthContext, Depends(require_permission("leads.read"))],
 ) -> Envelope[LeadOut]:
-    return Envelope(data=_lead_out(db, get_owned(db, Lead, ctx.tenant_id, lead_id)))
+    lead = get_owned(db, Lead, ctx.tenant_id, lead_id)
+    payload = _lead_out(db, lead)
+    view = workflow_fields(db, lead)
+    payload.product_name = view["product_name"]
+    payload.enrichment_state = view["enrichment_state"]
+    payload.missing_information = view["missing_information"]
+    payload.eligibility = view["eligibility"]
+    payload.next_action = view["next_action"]
+    payload.approval_id = view["approval_id"]
+    return Envelope(data=payload)
 
 
 @router.post("/leads/{lead_id}/enrich", response_model=Envelope[dict])

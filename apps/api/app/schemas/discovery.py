@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import Field
 
 from app.schemas.common import APIModel
@@ -6,6 +8,8 @@ from app.schemas.common import APIModel
 class DiscoveryRunIn(APIModel):
     profile_urls: list[str] = Field(default_factory=list)
     search_query: str = ""
+    operating_plan_id: UUID | None = None
+    icp_id: UUID | None = None
 
 
 class DiscoveryProspectOut(APIModel):
@@ -20,6 +24,11 @@ class DiscoveryProspectOut(APIModel):
     explanation: str = ""
     owner_name: str = ""
     provider_ref: str = ""
+    product_name: str = ""
+    enrichment_state: str = ""
+    missing_information: str = ""
+    eligibility: str = ""
+    approval_id: str = ""
 
 
 class DiscoveryRunOut(APIModel):
@@ -34,6 +43,11 @@ class DiscoveryRunOut(APIModel):
     failure_class: str = ""
     candidate_count: int
     icp_name: str
+    icp_id: str = ""
+    operating_plan_id: str = ""
+    product_id: str = ""
+    filters: dict = Field(default_factory=dict)
+    next_action: str = ""
 
 
 class DiscoveryHealthOut(APIModel):

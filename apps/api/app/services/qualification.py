@@ -47,7 +47,6 @@ def qualify_lead(
         reasons.append("Lead has no email or company")
     if lead.intent_score < settings.minimum_intent_score:
         reasons.append(f"Intent {lead.intent_score} is below minimum {settings.minimum_intent_score}")
-    sequence_ready = not missing and total >= settings.minimum_lead_score and lead.intent_score >= settings.minimum_intent_score
     decision = assess_and_store(
         db,
         tenant_id=tenant_id,
@@ -58,6 +57,13 @@ def qualify_lead(
         overrides=fact_overrides,
         correlation_id=correlation_id,
     )
+    outbound_eligible = bool(decision["outbound_eligible"])
+    if outbound_eligible:
+        sequence_ready = True
+        reasons.append("Assessment permits outbound. The numerical score is recorded and does not veto.")
+    else:
+        sequence_ready = False
+        reasons.append("Assessment does not permit outbound.")
     sales_qualified = bool(decision["sales_qualified"])
     held = bool(decision["response_eligible"] or decision["meeting_eligible"])
     if sales_qualified:
@@ -99,6 +105,7 @@ def qualify_lead(
         "missing": missing,
         "policy": "rules-v1",
         "response_eligible": decision["response_eligible"],
+        "outbound_eligible": outbound_eligible,
         "meeting_eligible": decision["meeting_eligible"],
         "sales_qualified": sales_qualified,
         "not_a_fit": decision["not_a_fit"],

@@ -22,6 +22,7 @@ type Assessment = {
   coverage_required: number;
   confidence: string;
   response_eligible: boolean;
+  outbound_eligible?: boolean;
   meeting_eligible: boolean;
   sales_qualified: boolean;
   not_a_fit: boolean;
@@ -175,6 +176,7 @@ export default function LeadDetailPage() {
             <div className="line-item"><span>Coverage</span><span>{assessment.data.coverage_known}/{assessment.data.coverage_required}</span></div>
             <div className="line-item"><span>Confidence</span><span>{assessment.data.confidence}</span></div>
             <div className="line-item"><span>Response</span><span>{assessment.data.response_eligible ? "Eligible" : "Not eligible"}</span></div>
+            <div className="line-item"><span>Outbound</span><span>{assessment.data.outbound_eligible ? "Eligible" : "Not eligible"}</span></div>
             <div className="line-item"><span>Discovery meeting</span><span>{assessment.data.meeting_eligible ? "Eligible" : "Not eligible"}</span></div>
             <div className="line-item"><span>Sales qualification</span><span>{assessment.data.sales_qualified ? "Qualified" : "Not qualified"}</span></div>
             <div className="line-item"><span>Next action</span><span>{labelize(assessment.data.next_action)}</span></div>
@@ -198,6 +200,12 @@ export default function LeadDetailPage() {
           <hr className="rule" />
           <Line label="Fit assessment" value={parts?.total != null ? `${parts.total} / 100 · evidence attached` : "Not scored"} />
           <Line label="Source" value={lead.source || "Not recorded"} />
+          <Line label="Selected product" value={lead.product_name || "No product is bound"} />
+          <Line label="Enrichment" value={lead.enrichment_state ? labelize(lead.enrichment_state) : "Not started"} />
+          <Line label="Missing" value={lead.missing_information || "Nothing further is listed"} />
+          <Line label="Channel eligibility" value={lead.eligibility ? labelize(lead.eligibility) : "Not assessed"} />
+          <Line label="Next action" value={lead.next_action || "No next action is stored"} />
+          <Line label="Draft approval" value={lead.approval_id || "No outbound draft"} />
           <Line label="Channel" value={lead.channel || "Not recorded"} />
           <Line label="Contact eligibility" value={lead.opt_out ? "Opted out" : lead.consent_email ? "Email permitted · current" : "Consent not recorded"} />
           <Line label="Buying trigger" value={lead.has_buying_trigger ? "Recorded" : "Not recorded"} />

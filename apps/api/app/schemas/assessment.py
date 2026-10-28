@@ -22,6 +22,7 @@ class AssessmentOut(APIModel):
     coverage_required: int
     confidence: str
     response_eligible: bool
+    outbound_eligible: bool = False
     meeting_eligible: bool
     sales_qualified: bool
     not_a_fit: bool

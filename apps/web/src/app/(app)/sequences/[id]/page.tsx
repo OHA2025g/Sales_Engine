@@ -11,7 +11,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 
 type Step = { id: string; position: number; delay_days: number; action_type: string; template: string };
-type SequenceDetail = { id: string; name: string; channel: string; status: string; purpose: string; steps: Step[] };
+type SequenceDetail = {
+  id: string;
+  name: string;
+  channel: string;
+  status: string;
+  purpose: string;
+  operating_plan_id?: string | null;
+  steps: Step[];
+};
 
 export default function SequenceDetailPage() {
   const params = useParams<{ id: string }>();
@@ -45,6 +53,11 @@ export default function SequenceDetailPage() {
         }
       />
       {activate.isError ? <p className="mb-4 text-sm text-[var(--rose)]">{(activate.error as Error).message}</p> : null}
+      <p className="mb-4 text-sm text-[var(--muted)]">
+        {row.operating_plan_id
+          ? `Outbound drafts for this sequence use operating plan ${row.operating_plan_id}. The approval shows the frozen product, the draft, and the facts behind it.`
+          : "No operating plan is selected on this sequence. An approval will ask for a product instead of guessing one."}
+      </p>
       <ol className="space-y-3">
         {(row.steps ?? []).map((step) => (
           <li key={step.id} className="panel p-4">

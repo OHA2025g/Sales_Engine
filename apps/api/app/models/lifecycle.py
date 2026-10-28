@@ -63,6 +63,7 @@ class Sequence(Base, TenantOwnedMixin):
     campaign_id: Mapped[UUID | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True)
     offer_key: Mapped[str] = mapped_column(String(80), default="", nullable=False)
     routing_priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    operating_plan_id: Mapped[UUID | None] = mapped_column(ForeignKey("operating_plans.id"), nullable=True)
 
 
 class SequenceStep(Base, TenantOwnedMixin):
@@ -83,6 +84,8 @@ class SequenceEnrollment(Base, TenantOwnedMixin):
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     current_step: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    context_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    context_version: Mapped[str] = mapped_column(String(64), default="", nullable=False)
 
 
 class Conversation(Base, TenantOwnedMixin):

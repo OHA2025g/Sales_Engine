@@ -104,6 +104,14 @@ class LeadOut(LeadIn):
     latest_score: LeadScoreOut | None = None
     owner_id: UUID | None = None
     owner_name: str = ""
+    operating_plan_id: UUID | None = None
+    icp_id: UUID | None = None
+    product_name: str = ""
+    enrichment_state: str = ""
+    missing_information: str = ""
+    eligibility: str = ""
+    next_action: str = ""
+    approval_id: str = ""
 
 
 class LeadAssigneeOut(APIModel):

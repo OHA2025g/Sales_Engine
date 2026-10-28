@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.providers.lead_discovery import get_lead_discovery_provider
 from app.schemas.common import Envelope
 from app.schemas.discovery import DiscoveryHealthOut, DiscoveryRunIn, DiscoveryRunOut
-from app.services.discovery import run_discovery
+from app.services.discovery import annotate_prospects, run_discovery
 from app.services.orchestrator import process_pending_events
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
@@ -35,7 +35,11 @@ def discover_leads(
         profile_urls=body.profile_urls,
         search_query=body.search_query,
         correlation_id=ctx.correlation_id,
+        operating_plan_id=body.operating_plan_id,
+        icp_id=body.icp_id,
     )
-    process_pending_events(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
+    if not result.get("execution_blocked") and result.get("next_action") not in {"choose_operating_plan", "choose_icp"}:
+        process_pending_events(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
+        result = annotate_prospects(db, ctx.tenant_id, result)
     db.commit()
     return Envelope(data=DiscoveryRunOut.model_validate(result))

@@ -1,5 +1,9 @@
 # Current Phase
 
+2026-10-27: Discovery follow-through is connected in fixtures and the local application is on Alembic `038`. A discovery run stores the tenant, the chosen ICP, and the chosen operating plan, then the existing outbox assesses the person. Missing channel permission keeps the lead and opens a task. It does not acknowledge and it does not create a send approval. A permissioned, assessment-eligible fixture reaches one product-aware draft. Sending stays blocked. The demonstration remains prepared. Its expiry is unchanged. Historical holds were not released. Public hosting remains postponed.
+
+Next recommended milestone: organic creative production and performance read-back. Do not authorize a send, a post, a booking, a call, discovery spend, or ad spend as part of that work. Paid campaign children, native lead forms, Meet, voice, commercial activation, and SEO remain listed in `docs/revenue-os-next-milestones.md`.
+
 **Phases 0–22 plus Autopilot batches 1–8 and the full-funnel completion slice are in product.**
 
 Batch 8 still proves a **controlled PILOT** tenant — not unrestricted enterprise production. The funnel slice wires tenant credentials into execution, splits voice, adds meeting capture, deepens ads, and closes first-touch attribution.

@@ -94,6 +94,10 @@ class Lead(Base, TenantOwnedMixin):
     utm_medium: Mapped[str] = mapped_column(String(80), default="", nullable=False)
     utm_campaign: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     owner_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    creative_version_id: Mapped[UUID | None] = mapped_column(ForeignKey("creative_versions.id"), nullable=True)
+    operating_plan_id: Mapped[UUID | None] = mapped_column(ForeignKey("operating_plans.id"), nullable=True)
+    icp_id: Mapped[UUID | None] = mapped_column(ForeignKey("icps.id"), nullable=True)
+    social_post_id: Mapped[UUID | None] = mapped_column(ForeignKey("social_posts.id"), nullable=True)
 
 
 class LeadScore(Base, TenantOwnedMixin):

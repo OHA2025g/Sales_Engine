@@ -89,6 +89,7 @@ class SequenceOut(APIModel):
     status: str
     purpose: str
     created_at: datetime
+    operating_plan_id: UUID | None = None
 
 
 class SequenceDetail(SequenceOut):

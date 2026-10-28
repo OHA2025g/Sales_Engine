@@ -49,6 +49,7 @@ def embeddable_form(token: str, request: Request, db: Annotated[Session, Depends
         "utm_medium": query.get("utm_medium") or "social",
         "utm_campaign": query.get("utm_campaign") or query.get("campaign") or "",
         "ad_id": query.get("ad_id") or "",
+        "publication": query.get("publication") or "",
     }
     hidden_html = "".join(
         f'<input type="hidden" name="{html.escape(name)}" value="{html.escape(value)}">' for name, value in hidden.items()

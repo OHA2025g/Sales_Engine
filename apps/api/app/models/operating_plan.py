@@ -43,6 +43,8 @@ class CreativeVersion(Base, TenantOwnedMixin):
     permalink: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     outcome: Mapped[str] = mapped_column(String(32), default="", nullable=False)
     metrics_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    publication_token: Mapped[str] = mapped_column(String(64), default="", index=True, nullable=False)
+    context_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
 
 class DemoScope(Base, TenantOwnedMixin):
@@ -62,3 +64,10 @@ class DemoScope(Base, TenantOwnedMixin):
     quiet_hours_start: Mapped[str] = mapped_column(String(5), default="21:00", nullable=False)
     quiet_hours_end: Mapped[str] = mapped_column(String(5), default="08:00", nullable=False)
     notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    form_url: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    page_ref: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    page_name: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    calendar_id: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    allowed_actions: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    binding_digest: Mapped[str] = mapped_column(String(64), default="", nullable=False)

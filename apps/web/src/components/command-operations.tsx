@@ -36,8 +36,31 @@ type Evidence = {
   excerpt: string;
 };
 
-type Prospect = { name: string; next_action: string; owner_name: string; explanation: string; outcome: string };
-type PlanVersion = { id: string; version: number; status: string; channel: string; outcome: string };
+type Prospect = {
+  name: string;
+  next_action: string;
+  owner_name: string;
+  explanation: string;
+  outcome: string;
+  product_name?: string;
+  missing_information?: string;
+  eligibility?: string;
+  enrichment_state?: string;
+  approval_id?: string;
+};
+type PlanVersion = {
+  id: string;
+  version: number;
+  status: string;
+  channel: string;
+  headline?: string;
+  outcome: string;
+  scheduled_for?: string;
+  delivery?: string;
+  provider_post_id?: string;
+  mock_notice?: string;
+};
+type PlanEnquiry = { lead_id: string; acknowledgement: string; publication: string };
 type PlanProduct = { id: string; name: string; kind: string; list_price: string; currency: string };
 type Operations = {
   offer: { name: string; offer_key: string; scope: string; sales_rules_configured: boolean } | null;
@@ -61,7 +84,11 @@ type Operations = {
     versions: PlanVersion[];
     products?: PlanProduct[];
     offer_name?: string;
+    customer_facing_name?: string;
+    sku?: string;
     product_id?: string;
+    enquiries?: PlanEnquiry[];
+    acknowledgement?: { not_prepared: number; pending: number; approved: number };
     outcomes: { attributed_enquiries: number; impressions: number | null; optimization: string };
   };
 };
@@ -169,6 +196,7 @@ export function CommandOperations() {
   const outcomes = Object.entries(data.outcomes);
   const pending = data.marketing?.versions?.find((row) => row.status === "draft");
   const authorized = data.marketing?.versions?.find((row) => row.status === "authorized");
+  const enquiries = data.marketing?.enquiries ?? [];
 
   return (
     <section className="panel section-gap">
@@ -258,19 +286,39 @@ export function CommandOperations() {
         <h3>Discovery</h3>
         {data.discovery?.prospects?.length ? data.discovery.prospects.map((row) => (
           <div className="line-item" key={`${row.name}-${row.outcome}`}>
-            <span>{row.name || "Unnamed prospect"} · {row.owner_name || "Unassigned"}</span>
-            <span>{row.next_action}</span>
+            <span>{row.name || "Unnamed prospect"} · {row.product_name || "No product"} · {row.owner_name || "Unassigned"}</span>
+            <span>{row.eligibility || row.outcome} · {row.enrichment_state || "enrichment unknown"} · {row.missing_information || "no missing list"} · {row.approval_id ? `draft ${row.approval_id}` : row.next_action}</span>
           </div>
         )) : <p className="muted">{data.discovery?.status === "failed" ? data.discovery.reason || "Discovery failed." : "No discovery result is stored."}</p>}
         <h3>Operating plan</h3>
         <div className="line-item">
-          <span>{data.marketing?.offer_name ? `${data.marketing.offer_name} · ` : ""}{data.marketing?.status || "absent"} · {data.marketing?.next_action || "choose_product"}</span>
-          <span>{data.marketing?.blocker || "No blocker is recorded."}</span>
+          <span>{data.marketing?.customer_facing_name || data.marketing?.offer_name || "No customer-facing product"} · {data.marketing?.status || "absent"} · {data.marketing?.next_action || "choose_product"}</span>
+          <span>{data.marketing?.sku ? `Internal SKU ${data.marketing.sku}` : "No SKU on this plan"}</span>
         </div>
+        <div className="line-item">
+          <span>Blocker or next action</span>
+          <span>{data.marketing?.blocker || data.marketing?.next_action || "No blocker is recorded."}</span>
+        </div>
+        {(data.marketing?.versions || []).length === 0 ? <p className="muted">No creative is on this plan.</p> : data.marketing?.versions.map((version) => (
+          <div className="line-item" key={version.id}>
+            <span>{version.headline || `Version ${version.version}`} · {version.channel} · {version.status}{version.scheduled_for ? ` · ${version.scheduled_for}` : ""}</span>
+            <span>{version.delivery === "mock" ? "Mock publication. Not a verified live post." : version.delivery === "live" ? `Live post ${version.provider_post_id || ""}`.trim() : version.outcome || "Not sent"}</span>
+          </div>
+        ))}
         <div className="line-item">
           <span>Attributed enquiries</span>
           <span>{data.marketing?.outcomes?.attributed_enquiries ?? 0}</span>
         </div>
+        <div className="line-item">
+          <span>Acknowledgement</span>
+          <span>{data.marketing?.acknowledgement ? `${data.marketing.acknowledgement.pending} pending · ${data.marketing.acknowledgement.approved} approved · ${data.marketing.acknowledgement.not_prepared} not prepared` : "No acknowledgement is recorded."}</span>
+        </div>
+        {enquiries.length === 0 ? <p className="muted">No attributed enquiry is stored on this plan.</p> : enquiries.map((enquiry) => (
+          <div className="line-item" key={enquiry.lead_id}>
+            <span>Lead {enquiry.lead_id}</span>
+            <span>{enquiry.publication === "mock" ? "Mock publication" : enquiry.publication} · acknowledgement {enquiry.acknowledgement}</span>
+          </div>
+        ))}
         <div className="line-item">
           <span>Provider impressions</span>
           <span>{data.marketing?.outcomes?.impressions === null || data.marketing?.outcomes?.impressions === undefined ? "Unavailable" : data.marketing.outcomes.impressions}</span>

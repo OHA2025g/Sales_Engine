@@ -28,9 +28,9 @@ from app.models.lifecycle import (
 )
 from app.models.market import CompetitiveSignal
 from app.models.workflow import WorkflowRun
-from app.services.content import draft_email_from_facts
 from app.services.crm import add_activity
 from app.services.market import clamp
+from app.services.outbound_draft import ProductConfigurationError, prepare_sequence_draft, resolve_product_binding
 from app.services.query import get_owned
 
 
@@ -232,6 +232,9 @@ def enroll_sequence(
     )
     if existing:
         return existing
+    binding = resolve_product_binding(db, tenant_id, sequence, lead)
+    if binding.status == "conflict":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Product configuration: {binding.message}")
     enrollment = SequenceEnrollment(
         tenant_id=tenant_id,
         created_by=actor_id,
@@ -258,27 +261,25 @@ def enroll_sequence(
             )
         )
         if already is None:
+            try:
+                draft = prepare_sequence_draft(
+                    db,
+                    tenant_id=tenant_id,
+                    sequence=sequence,
+                    enrollment=enrollment,
+                    step=first,
+                    lead=lead,
+                )
+            except ProductConfigurationError as exc:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Product configuration: {exc.message}") from exc
+            draft["run_id"] = str(run_id) if run_id else ""
             approval = AIApproval(
                     tenant_id=tenant_id,
                     created_by=actor_id,
                     action_level=2,
                     action_type="sequence.email.send",
                     title=f"Send sequence step for {lead.email}",
-                    payload_json=json.dumps(
-                        {
-                            "enrollment_id": str(enrollment.id),
-                            "lead_id": str(lead.id),
-                            "sequence_id": str(sequence.id),
-                            "run_id": str(run_id) if run_id else "",
-                            "template": first.template,
-                            "subject": "Follow-up",
-                            "body": draft_email_from_facts(db, tenant_id, first.template),
-                            "why": "Qualified lead selected for the first eligible email sequence.",
-                            "evidence": "Consent on file. Deterministic score met the tenant minimum.",
-                            "risk": "External send. Mock provider until Gmail is connected.",
-                            "expected_outcome": "First-touch email recorded after approval.",
-                        }
-                    ),
+                    payload_json=json.dumps(draft),
                     status="approved" if authorization == "execute" else "pending",
                     run_id=run_id,
                     entity_type="lead",

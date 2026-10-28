@@ -1,5 +1,5 @@
 import json
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -21,11 +21,12 @@ from app.providers.social import (
     reaches_provider,
     resolved_permalink,
 )
-from app.services.social_artwork import draw_banner_png
-from app.services.social_media import read_social_image
 from app.services.audit import write_audit
+from app.services.demo_guard import external_execution_block
 from app.services.public_forms import social_form_link
 from app.services.query import get_owned
+from app.services.social_artwork import draw_banner_png
+from app.services.social_media import read_social_image
 
 CHANNELS = ("linkedin", "facebook", "instagram", "youtube", "x", "whatsapp")
 APPROVAL_CHANNELS = ("linkedin", "facebook", "instagram", "youtube")
@@ -148,6 +149,7 @@ def publish_post(
     image_url: str = "",
     form_key_id: UUID | None = None,
     extra_links: list[tuple[str, str]] | None = None,
+    scope_target_id: str = "",
 ) -> SocialPost:
     from app.services.action_requests import upsert_action_request
     from app.services.dispatcher import _channel_blocked
@@ -191,7 +193,7 @@ def publish_post(
             dedupe_key=f"social:{row.id}",
         )
         return row
-    status, result = _send(db, tenant_id, normalized, published_body, link_url, image_url)
+    status, result = _send(db, tenant_id, normalized, published_body, link_url, image_url, target_id=scope_target_id)
     return _store_post(
         db,
         tenant_id=tenant_id,
@@ -601,6 +603,14 @@ def _stored_media_bytes(db: Session, image_url: str) -> bytes:
     return data
 
 
+def _publication_token(url: str) -> str:
+    token = dict(parse_qsl(urlsplit(url or "").query)).get("publication", "")
+    token = token.strip()
+    if not token or len(token) > 64:
+        return ""
+    return token
+
+
 def _linked_form(
     db: Session,
     tenant_id: UUID,
@@ -613,7 +623,15 @@ def _linked_form(
     key = get_owned(db, PublicFormKey, tenant_id, form_key_id)
     if key.status != "active":
         raise HTTPException(status_code=422, detail="That form is not active.")
-    return social_form_link(key, channel), key.id
+    link = social_form_link(key, channel)
+    token = _publication_token(link_url)
+    if token:
+        link = f"{link}{'&' if '?' in link else '?'}publication={token}"
+    return link, key.id
+
+
+def _reaches_live_publisher(publisher: object) -> bool:
+    return isinstance(publisher, (LinkedInSocialPublisher, MetaSocialPublisher))
 
 
 def _send(
@@ -623,6 +641,7 @@ def _send(
     body: str,
     link_url: str,
     image_url: str,
+    target_id: str = "",
 ) -> tuple[str, SocialPublishResult]:
     from app.services.provider_resolve import resolve_provider
 
@@ -661,6 +680,17 @@ def _send(
                 page_token=resolved.secrets.get("access_token", ""),
                 instagram_id=resolved.secrets.get("instagram_id", ""),
             )
+    if _reaches_live_publisher(publisher):
+        blocked = external_execution_block(
+            db,
+            tenant_id=tenant_id,
+            action="social.publish",
+            target_id=target_id,
+            channel=normalized,
+            real_effect=True,
+        )
+        if blocked:
+            return "blocked", SocialPublishResult(ok=False, provider=normalized, is_mock=False, reason=blocked)
     if isinstance(publisher, MetaSocialPublisher):
         result = publisher.publish(
             body=body,

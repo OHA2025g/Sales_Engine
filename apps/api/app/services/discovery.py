@@ -8,10 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.ai.providers import get_llm_provider
 from app.core.config import get_settings
-from app.models.autonomy import AutopilotSettings
+from app.models.ai import AIApproval
+from app.models.autonomy import AutonomousRunStep, AutopilotSettings, EntityAutomationState
 from app.models.crm import ICP, Account, Contact, Lead, Task
-from app.models.identity import DomainEvent
+from app.models.identity import DomainEvent, User
 from app.models.integrations import ProviderAction
+from app.models.lifecycle import Product
+from app.models.operating_plan import OperatingPlan
 from app.providers.lead_discovery import (
     DISCOVERY_DAILY_LIMIT,
     HARVEST_MAX_ITEMS,
@@ -20,10 +23,11 @@ from app.providers.lead_discovery import (
     get_lead_discovery_provider,
     search_public_profiles,
 )
-from app.services.assessment import Fact, assess_and_store
+from app.services.assessment import latest_decision
 from app.services.audit import emit_event, write_audit
 from app.services.autopilot_settings import discovered_today, get_or_create_settings
 from app.services.crm import add_activity, assign_lead, list_lead_assignees
+from app.services.demo_guard import discovery_execution_block
 from app.services.discovery_query import build_discovery_query
 from app.services.idempotency import claim_daily_slot
 from app.services.provider_metrics import DISCOVERY_CANDIDATES, DISCOVERY_CREATED, DISCOVERY_DUPLICATES
@@ -143,6 +147,8 @@ def persist_discovered_lead(
     actor_id: UUID,
     candidate: DiscoveredLead,
     provider: str = "apify",
+    operating_plan_id: UUID | None = None,
+    icp_id: UUID | None = None,
 ) -> tuple[str, Lead | None]:
     email = _normalize_email(candidate.email)
     linkedin = _normalize_url(candidate.linkedin_url)
@@ -180,20 +186,8 @@ def persist_discovered_lead(
         if ref_match:
             return "duplicate_provider_ref", ref_match
 
-    person_match = db.scalar(
-        select(Lead).where(
-            Lead.tenant_id == tenant_id,
-            Lead.deleted_at.is_(None),
-            func.lower(Lead.first_name) == candidate.first_name.lower(),
-            func.lower(Lead.last_name) == candidate.last_name.lower(),
-            func.lower(Lead.company_name) == (candidate.company_name or "").lower(),
-        )
-    )
-    if person_match:
-        return "duplicate_person", person_match
-
     account = _find_account(db, tenant_id, candidate.company_name, email)
-    domain = infer_company_domain(candidate, db=db, tenant_id=tenant_id)
+    domain = clean_domain(candidate.company_website) or clean_domain(email.split("@", 1)[1] if "@" in email else "")
     if account is None and domain:
         account = db.scalar(
             select(Account).where(Account.tenant_id == tenant_id, Account.domain == domain, Account.deleted_at.is_(None))
@@ -261,6 +255,8 @@ def persist_discovered_lead(
         discovery_provider=provider,
         retrieved_at=datetime.now(UTC),
         discovery_confidence=candidate.confidence,
+        operating_plan_id=operating_plan_id,
+        icp_id=icp_id,
     )
     db.add(lead)
     db.flush()
@@ -376,7 +372,7 @@ def remaining_candidate_budget(db: Session, settings: AutopilotSettings) -> int:
     return max(0, min(per_run, leftover, leftover_leads))
 
 
-def _assign_discovered(db: Session, *, tenant_id: UUID, actor_id: UUID, lead: Lead, correlation_id: str) -> str:
+def assign_discovered_lead(db: Session, *, tenant_id: UUID, actor_id: UUID, lead: Lead, correlation_id: str) -> str:
     people = list_lead_assignees(db, tenant_id)
     if not people:
         return ""
@@ -409,16 +405,18 @@ def _assign_discovered(db: Session, *, tenant_id: UUID, actor_id: UUID, lead: Le
     return ""
 
 
-def _next_action_text(decision: dict, *, has_email: bool) -> str:
+def _next_action_text(decision: dict, *, has_email: bool, consent: bool) -> str:
     if decision.get("not_a_fit"):
         return "Stop. Verified facts show this person is not a fit."
     if decision.get("identity") == "suppressed":
         return "Do not contact. The person is suppressed."
-    if not has_email:
-        return "Complete the missing email before any outreach."
-    if not decision.get("response_eligible"):
+    if decision.get("outbound_eligible"):
+        return "Review the outbound draft. Sending stays blocked until approval."
+    if not consent:
         return "Record channel permission before any email. Discovery did not create consent or buying intent."
-    return "Wait. Unknown facts stay unknown."
+    if not has_email:
+        return "Complete the missing email before any outreach. The address was not invented."
+    return "Known facts do not identify a prospect yet. Missing fit stays missing. No one was disqualified."
 
 
 def _remember_next_action(db: Session, *, tenant_id: UUID, actor_id: UUID, lead: Lead, title: str) -> None:
@@ -449,55 +447,179 @@ def _remember_next_action(db: Session, *, tenant_id: UUID, actor_id: UUID, lead:
     )
 
 
-def _place_discovered(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    actor_id: UUID,
-    lead: Lead,
-    candidate: DiscoveredLead,
-    provider: str,
-    correlation_id: str,
-) -> dict:
-    excerpt = " ".join(
-        part
-        for part in (candidate.title.strip(), provider, candidate.provider_ref, candidate.source_url or candidate.linkedin_url)
-        if part
-    ).strip()
-    overrides: list[Fact] = []
-    if candidate.title.strip():
-        overrides.append(Fact("persona", "inferred", candidate.title.strip(), "present", provider, excerpt[:500]))
-    decision = assess_and_store(
-        db,
-        tenant_id=tenant_id,
-        actor_id=actor_id,
-        lead=lead,
-        overrides=overrides,
-        correlation_id=correlation_id,
+def record_discovery_gap(db: Session, *, tenant_id: UUID, actor_id: UUID, lead: Lead) -> str:
+    """Keep the person and say what is missing. This does not send or acknowledge."""
+    decision = latest_decision(db, tenant_id=tenant_id, lead_id=lead.id)
+    payload = {
+        "not_a_fit": bool(decision.not_a_fit) if decision is not None else False,
+        "identity": decision.identity if decision is not None else "",
+        "outbound_eligible": bool(decision.outbound_eligible) if decision is not None else False,
+        "response_eligible": bool(decision.response_eligible) if decision is not None else False,
+    }
+    action = _next_action_text(payload, has_email=bool(lead.email), consent=bool(lead.consent_email))
+    _remember_next_action(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, title=action)
+    return action
+
+
+def _product_name(db: Session, lead: Lead) -> str:
+    if lead.operating_plan_id is None:
+        return ""
+    plan = db.get(OperatingPlan, lead.operating_plan_id)
+    if plan is None or plan.tenant_id != lead.tenant_id:
+        return ""
+    try:
+        snapshot = json.loads(plan.context_snapshot or "{}")
+    except json.JSONDecodeError:
+        snapshot = {}
+    if isinstance(snapshot, dict) and str(snapshot.get("customer_facing_name") or "").strip():
+        return str(snapshot["customer_facing_name"]).strip()
+    if plan.product_id is None:
+        return ""
+    product = db.get(Product, plan.product_id)
+    if product is None or product.tenant_id != lead.tenant_id:
+        return ""
+    return product.name
+
+
+def _recorded_gaps(db: Session, lead: Lead) -> str:
+    """Name the contact and company fields that are still empty. Do not fill them."""
+    account = db.get(Account, lead.account_id) if lead.account_id else None
+    contact = db.get(Contact, lead.contact_id) if lead.contact_id else None
+    missing: list[str] = []
+    if not (lead.email or "").strip():
+        missing.append("email")
+    if contact is None or not (contact.phone or "").strip():
+        missing.append("phone")
+    if account is None or not (account.industry or "").strip():
+        missing.append("industry")
+    if account is None or account.employee_count is None:
+        missing.append("employees")
+    website = ""
+    if account is not None:
+        website = (account.website or "").strip() or (account.domain or "").strip()
+    if not website:
+        missing.append("website")
+    return ", ".join(missing)
+
+
+def _enrichment_state(db: Session, lead: Lead) -> tuple[str, str]:
+    step = db.scalar(
+        select(AutonomousRunStep)
+        .where(
+            AutonomousRunStep.tenant_id == lead.tenant_id,
+            AutonomousRunStep.entity_id == str(lead.id),
+            AutonomousRunStep.name == "enrich",
+            AutonomousRunStep.deleted_at.is_(None),
+        )
+        .order_by(AutonomousRunStep.created_at.desc())
     )
-    owner_name = ""
-    if decision.get("identity") != "suppressed":
-        owner_name = _assign_discovered(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, correlation_id=correlation_id)
-    action = _next_action_text(decision, has_email=bool(lead.email))
-    if not decision.get("response_eligible"):
-        _remember_next_action(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, title=action)
+    if step is None:
+        return "not_started", _recorded_gaps(db, lead)
+    try:
+        detail = json.loads(step.detail_json or "{}")
+    except json.JSONDecodeError:
+        detail = {}
+    missing = detail.get("missing") if isinstance(detail, dict) else []
+    if not isinstance(missing, list):
+        missing = []
+    return step.status, ", ".join(str(item) for item in missing if str(item).strip())
+
+
+def annotate_prospects(db: Session, tenant_id: UUID, result: dict) -> dict:
+    """Fill the stored discovery rows with the current assessment and draft."""
+    prospects = result.get("prospects") if isinstance(result.get("prospects"), list) else []
+    for prospect in prospects:
+        if not isinstance(prospect, dict):
+            continue
+        try:
+            lead = db.get(Lead, UUID(str(prospect.get("lead_id") or "")))
+        except ValueError:
+            lead = None
+        if lead is None or lead.tenant_id != tenant_id or lead.deleted_at is not None:
+            continue
+        decision = latest_decision(db, tenant_id=tenant_id, lead_id=lead.id)
+        owner = db.get(User, lead.owner_id) if lead.owner_id else None
+        approval = db.scalar(
+            select(AIApproval)
+            .where(
+                AIApproval.tenant_id == tenant_id,
+                AIApproval.entity_type == "lead",
+                AIApproval.entity_id == str(lead.id),
+                AIApproval.action_type == "sequence.email.send",
+                AIApproval.deleted_at.is_(None),
+            )
+            .order_by(AIApproval.created_at.desc())
+        )
+        enrichment, missing = _enrichment_state(db, lead)
+        state = db.scalar(
+            select(EntityAutomationState).where(
+                EntityAutomationState.tenant_id == tenant_id,
+                EntityAutomationState.entity_type == "lead",
+                EntityAutomationState.entity_id == str(lead.id),
+                EntityAutomationState.deleted_at.is_(None),
+            )
+        )
+        outcome = str(prospect.get("outcome") or "")
+        if outcome.startswith("duplicate"):
+            action = str(prospect.get("next_action") or "Already on file. No second person was created.")
+            explanation = str(prospect.get("explanation") or f"Matched an existing person by {outcome.replace('_', ' ')}.")
+        elif decision is None:
+            action = "Assessment is not stored yet."
+            explanation = "The person is saved. Fit and channel permission are not decided."
+        else:
+            action = _next_action_text(
+                {
+                    "not_a_fit": decision.not_a_fit,
+                    "identity": decision.identity,
+                    "outbound_eligible": decision.outbound_eligible,
+                    "response_eligible": decision.response_eligible,
+                },
+                has_email=bool(lead.email),
+                consent=bool(lead.consent_email),
+            )
+            explanation = (
+                f"Coverage {decision.coverage_known}/{decision.coverage_required}. "
+                f"Confidence {decision.confidence}. Unknown facts stay unknown. No buying intent was added."
+            )
+            prospect["coverage_known"] = decision.coverage_known
+            prospect["coverage_required"] = decision.coverage_required
+            prospect["confidence"] = decision.confidence
+            prospect["response_eligible"] = decision.response_eligible
+        prospect["next_action"] = action
+        prospect["explanation"] = explanation
+        prospect["owner_name"] = owner.name if owner is not None and owner.tenant_id == tenant_id else ""
+        prospect["product_name"] = _product_name(db, lead)
+        prospect["enrichment_state"] = enrichment
+        prospect["missing_information"] = missing
+        prospect["eligibility"] = (
+            "outbound_eligible"
+            if decision is not None and decision.outbound_eligible
+            else "channel_permission_missing"
+            if not lead.consent_email
+            else "not_outbound"
+        )
+        prospect["approval_id"] = str(approval.id) if approval is not None else ""
+        if state is not None and state.blocked_reason and not decision:
+            prospect["next_action"] = state.blocked_reason
+    result["prospects"] = prospects
+    return result
+
+
+def workflow_fields(db: Session, lead: Lead) -> dict:
+    """Fields the lead page reads without a second discovery screen."""
+    annotated = annotate_prospects(
+        db,
+        lead.tenant_id,
+        {"prospects": [{"lead_id": str(lead.id), "outcome": "created"}]},
+    )
+    prospect = annotated["prospects"][0]
     return {
-        "lead_id": str(lead.id),
-        "name": f"{lead.first_name} {lead.last_name}".strip(),
-        "outcome": "created",
-        "coverage_known": int(decision.get("coverage_known") or 0),
-        "coverage_required": int(decision.get("coverage_required") or 5),
-        "confidence": str(decision.get("confidence") or "none"),
-        "response_eligible": bool(decision.get("response_eligible")),
-        "next_action": action,
-        "explanation": (
-            f"Coverage {decision.get('coverage_known')}/{decision.get('coverage_required')}. "
-            f"Confidence {decision.get('confidence')}. "
-            + "; ".join(str(item) for item in decision.get("reasons") or [])
-            + ". Unknown facts stay unknown. No buying intent was added."
-        ),
-        "owner_name": owner_name,
-        "provider_ref": candidate.provider_ref,
+        "product_name": str(prospect.get("product_name") or ""),
+        "enrichment_state": str(prospect.get("enrichment_state") or ""),
+        "missing_information": str(prospect.get("missing_information") or ""),
+        "eligibility": str(prospect.get("eligibility") or ""),
+        "next_action": str(prospect.get("next_action") or ""),
+        "approval_id": str(prospect.get("approval_id") or ""),
     }
 
 
@@ -516,13 +638,61 @@ def discovery_board(db: Session, tenant_id: UUID) -> dict:
     if not isinstance(payload, dict):
         payload = {}
     failure = str(payload.get("failure_class") or "")
+    annotated = annotate_prospects(
+        db,
+        tenant_id,
+        {"prospects": payload.get("prospects") if isinstance(payload.get("prospects"), list) else []},
+    )
     return {
         "status": "failed" if failure else "recorded",
         "reason": str(payload.get("reason") or ""),
         "created": int(payload.get("created") or 0),
         "failures": failure,
-        "prospects": payload.get("prospects") if isinstance(payload.get("prospects"), list) else [],
+        "filters": payload.get("filters") if isinstance(payload.get("filters"), dict) else {},
+        "operating_plan_id": str(payload.get("operating_plan_id") or ""),
+        "icp_id": str(payload.get("icp_id") or ""),
+        "product_id": str(payload.get("product_id") or ""),
+        "prospects": annotated["prospects"],
     }
+
+
+def bound_operating_plan(db: Session, tenant_id: UUID, plan_id: UUID | None = None) -> tuple[OperatingPlan | None, str]:
+    """Use an explicit plan, or the only open plan. Never the newest of several."""
+    if plan_id is not None:
+        plan = db.get(OperatingPlan, plan_id)
+        if plan is None or plan.tenant_id != tenant_id or plan.deleted_at is not None:
+            return None, "That operating plan is not in this workspace."
+        return plan, ""
+    opened = db.scalars(
+        select(OperatingPlan).where(
+            OperatingPlan.tenant_id == tenant_id,
+            OperatingPlan.deleted_at.is_(None),
+            OperatingPlan.status.in_(["running", "blocked", "paused"]),
+        )
+    ).all()
+    if len(opened) == 1:
+        return opened[0], ""
+    if len(opened) > 1:
+        return None, "More than one operating plan is open. Choose the plan before discovery."
+    return None, ""
+
+
+def explicit_icp(db: Session, tenant_id: UUID, icp_id: UUID | None = None) -> tuple[ICP | None, str]:
+    """Use an explicit ICP, the only default, or the only saved profile."""
+    if icp_id is not None:
+        row = db.get(ICP, icp_id)
+        if row is None or row.tenant_id != tenant_id or row.deleted_at is not None:
+            return None, "That ICP is not in this workspace."
+        return row, ""
+    rows = db.scalars(select(ICP).where(ICP.tenant_id == tenant_id, ICP.deleted_at.is_(None))).all()
+    defaults = [row for row in rows if row.is_default]
+    if len(defaults) == 1:
+        return defaults[0], ""
+    if len(rows) == 1:
+        return rows[0], ""
+    if not rows:
+        return None, ""
+    return None, "Choose one ICP before discovery. More than one profile is saved."
 
 
 def run_discovery(
@@ -535,8 +705,11 @@ def run_discovery(
     correlation_id: str = "",
     provider=None,
     enforce_budget: bool = True,
+    operating_plan_id: UUID | None = None,
+    icp_id: UUID | None = None,
 ) -> dict:
-    icp = default_icp(db, tenant_id)
+    icp, icp_message = explicit_icp(db, tenant_id, icp_id)
+    plan, plan_message = bound_operating_plan(db, tenant_id, operating_plan_id)
     settings = get_or_create_settings(db, tenant_id=tenant_id, actor_id=actor_id)
     env = get_settings()
     empty = {
@@ -552,6 +725,19 @@ def run_discovery(
         "prospects": [],
         "failure_class": "",
     }
+    used = provider or get_lead_discovery_provider(db, tenant_id)
+    blocked = discovery_execution_block(db, tenant_id, used)
+    if blocked:
+        empty["provider"] = "skipped"
+        empty["is_mock"] = False
+        empty["connected"] = False
+        empty["reason"] = blocked
+        empty["execution_blocked"] = True
+        return empty
+    if plan_message or icp_message:
+        empty["reason"] = plan_message or icp_message
+        empty["next_action"] = "choose_operating_plan" if plan_message else "choose_icp"
+        return empty
     if enforce_budget and settings.max_discovery_runs_per_day > 0 and discovery_runs_today(db, tenant_id) >= settings.max_discovery_runs_per_day:
         empty["reason"] = "Daily discovery run cap reached"
         return empty
@@ -579,7 +765,19 @@ def run_discovery(
         max_items=max_items,
         process_token=env.apify_linkedin_process_token,
     )
-    used = provider or get_lead_discovery_provider(db, tenant_id)
+    filters = {
+        "icp_id": str(icp.id) if icp is not None else "",
+        "operating_plan_id": str(plan.id) if plan is not None else "",
+        "product_id": str(plan.product_id) if plan is not None and plan.product_id is not None else "",
+        "industries": query.industries,
+        "geographies": query.geographies,
+        "search_query": query.search_query,
+        "job_titles": list(query.job_titles),
+        "seniorities": list(query.seniorities),
+        "keywords": query.keywords,
+        "max_items": query.max_items,
+        "profile_urls": list(query.profile_urls),
+    }
     health = used.health() if hasattr(used, "health") else {"provider": "discovery"}
     action = begin_action(
         db,
@@ -598,40 +796,37 @@ def run_discovery(
     prospects: list[dict] = []
     for candidate in result.candidates[:max_items]:
         reason, lead = persist_discovered_lead(
-            db, tenant_id=tenant_id, actor_id=actor_id, candidate=candidate, provider=result.provider
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            candidate=candidate,
+            provider=result.provider,
+            operating_plan_id=plan.id if plan is not None else None,
+            icp_id=icp.id if icp is not None else None,
         )
-        if reason == "created" and lead is not None:
+        if lead is None:
+            skipped[reason] = skipped.get(reason, 0) + 1
+            continue
+        if reason == "created":
             created += 1
             lead_ids.append(str(lead.id))
-            prospects.append(
-                _place_discovered(
-                    db,
-                    tenant_id=tenant_id,
-                    actor_id=actor_id,
-                    lead=lead,
-                    candidate=candidate,
-                    provider=result.provider,
-                    correlation_id=correlation_id,
-                )
-            )
         else:
             skipped[reason] = skipped.get(reason, 0) + 1
-            if lead is not None:
-                prospects.append(
-                    {
-                        "lead_id": str(lead.id),
-                        "name": f"{lead.first_name} {lead.last_name}".strip(),
-                        "outcome": reason,
-                        "coverage_known": 0,
-                        "coverage_required": 5,
-                        "confidence": "none",
-                        "response_eligible": False,
-                        "next_action": "Already on file. No second person was created.",
-                        "explanation": f"Matched an existing person by {reason.replace('_', ' ')}.",
-                        "owner_name": "",
-                        "provider_ref": candidate.provider_ref,
-                    }
-                )
+        prospects.append(
+            {
+                "lead_id": str(lead.id),
+                "name": f"{lead.first_name} {lead.last_name}".strip(),
+                "outcome": reason,
+                "coverage_known": 0,
+                "coverage_required": 5,
+                "confidence": "none",
+                "response_eligible": False,
+                "next_action": "Already on file. No second person was created." if reason != "created" else "",
+                "explanation": f"Matched an existing person by {reason.replace('_', ' ')}." if reason != "created" else "",
+                "owner_name": "",
+                "provider_ref": candidate.provider_ref,
+            }
+        )
     prospects.sort(key=lambda item: (-int(item["coverage_known"]), str(item["name"])))
     DISCOVERY_CANDIDATES.labels(provider=result.provider[:40]).inc(len(result.candidates))
     DISCOVERY_CREATED.labels(provider=result.provider[:40]).inc(created)
@@ -685,6 +880,10 @@ def run_discovery(
             "reason": result.reason,
             "failure_class": result.failure_class,
             "prospects": prospects,
+            "filters": filters,
+            "icp_id": filters["icp_id"],
+            "operating_plan_id": filters["operating_plan_id"],
+            "product_id": filters["product_id"],
         },
     )
     return {
@@ -699,4 +898,8 @@ def run_discovery(
         "failure_class": result.failure_class,
         "candidate_count": len(result.candidates),
         "icp_name": icp.name if icp else "",
+        "icp_id": filters["icp_id"],
+        "operating_plan_id": filters["operating_plan_id"],
+        "product_id": filters["product_id"],
+        "filters": filters,
     }

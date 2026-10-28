@@ -3,7 +3,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models.crm import Account, Lead
+from app.models.crm import Account, Contact, Lead
 from app.providers.enrichment import get_enrichment_provider
 from app.services.audit import emit_event, write_audit
 from app.services.crm import add_activity
@@ -19,13 +19,16 @@ def enrich_lead(
     lead: Lead,
     correlation_id: str = "",
     domain: str = "",
+    allow_simulated: bool = True,
 ) -> dict:
     account = db.get(Account, lead.account_id) if lead.account_id else None
     created = {"account_signals": 0, "intent_signals": 0, "technology_signals": 0, "triggers": 0}
     source = "none"
-    if account is not None:
+    if account is not None and allow_simulated:
         created = refresh_account_intelligence(db, tenant_id=tenant_id, actor_id=actor_id, account=account)
         source = "mock-intelligence"
+    elif account is not None:
+        source = "unsupported"
     email_result = {"ok": False, "email": lead.email, "verified": False, "reason": "", "provider": "", "is_mock": True}
     host = domain or (lead.email.split("@", 1)[1] if "@" in (lead.email or "") else "") or (account.domain if account is not None else "")
     if host:
@@ -50,13 +53,32 @@ def enrich_lead(
             check = provider.verify_email(email=found.email or lead.email)
             email_result["verified"] = check.verified
             email_result["reason"] = check.reason or found.reason
+    contact = db.get(Contact, lead.contact_id) if lead.contact_id else None
+    missing: list[str] = []
+    if not (lead.email or "").strip():
+        missing.append("email")
+    if contact is None or not (contact.phone or "").strip():
+        missing.append("phone")
+    if account is None or not (account.industry or "").strip():
+        missing.append("industry")
+    if account is None or account.employee_count is None:
+        missing.append("employees")
+    if account is None or not (account.website or "").strip():
+        missing.append("website")
+    if source == "unsupported":
+        email_result = {
+            **email_result,
+            "reason": email_result.get("reason") or "Enrichment did not supply a contact. Nothing was invented.",
+        }
     provenance = {
         "source": source,
-        "confidence": 55 if account is not None else 20,
-        "verified_at": datetime.now(UTC).isoformat(),
+        "confidence": 55 if account is not None and source != "unsupported" else 20,
+        "verified_at": datetime.now(UTC).isoformat() if source != "unsupported" else "",
         "created": created,
         "overwrote_fields": [],
         "email": email_result,
+        "missing": missing,
+        "incomplete": bool(missing),
     }
     add_activity(
         db,

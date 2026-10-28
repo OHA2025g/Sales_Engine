@@ -13,6 +13,8 @@ def approval_out(row: AIApproval) -> ApprovalOut:
         payload = {}
     who = str(payload.get("who") or payload.get("lead_id") or payload.get("customer_id") or payload.get("campaign_id") or row.entity_id or "")
     message = str(payload.get("body") or payload.get("template") or "")
+    missing = payload.get("missing_information")
+    missing_text = ", ".join(str(item) for item in missing) if isinstance(missing, list) else str(missing or "")
     action = row.action_type
     category = "SALES"
     if action.startswith("customer.") or "success" in action:
@@ -44,7 +46,38 @@ def approval_out(row: AIApproval) -> ApprovalOut:
         risk=str(payload.get("risk") or "External or commercial action requires a human gate."),
         expected_outcome=str(payload.get("expected_outcome") or ""),
         message=message,
+        subject=str(payload.get("subject") or ""),
+        product_name=str(payload.get("product_name") or ""),
+        generation=str(payload.get("generation") or ""),
+        context_version=str(payload.get("context_version") or ""),
+        personalisation=_personalisation(payload),
+        missing_information=missing_text,
+        eligibility=str(payload.get("eligibility") or ""),
+        next_action=str(payload.get("next_action") or ""),
         commercial_impact=str(payload.get("commercial_impact") or ""),
         budget_impact=str(payload.get("budget") or payload.get("budget_impact") or ""),
         category=category,
     )
+
+
+def _personalisation(payload: dict) -> str:
+    raw = payload.get("personalisation")
+    if isinstance(raw, str):
+        return raw
+    if not isinstance(raw, dict):
+        return ""
+    lines: list[str] = []
+    labels = (
+        ("Customer-supplied", "customer_supplied"),
+        ("Sourced observations", "sourced_observations"),
+        ("Inferences", "inferences"),
+        ("Unsupported", "unsupported"),
+    )
+    for label, key in labels:
+        items = raw.get(key) or []
+        if isinstance(items, list) and items:
+            lines.append(f"{label}: " + "; ".join(str(item) for item in items))
+    refs = payload.get("evidence_references") or []
+    if isinstance(refs, list) and refs:
+        lines.append("References: " + "; ".join(str(item) for item in refs))
+    return "\n".join(lines)

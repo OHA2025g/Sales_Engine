@@ -2,27 +2,31 @@ import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.providers import MockLLMProvider, NotConfiguredLLMProvider, get_llm_provider
 from app.ai.runtime import research_account
 from app.models.ai import AIRecommendation
 from app.models.autonomy import AutomationIdempotencyKey, AutonomousRun, AutonomousRunStep, AutopilotSettings
 from app.models.crm import Lead
 from app.models.identity import DomainEvent, User
 from app.models.lifecycle import Sequence, SequenceEnrollment, SequenceStep
+from app.services.assessment import Fact
 from app.services.audit import emit_event
 from app.services.automation_state import get_state, is_entity_paused, upsert_state
 from app.services.autopilot_settings import get_or_create_settings, in_quiet_hours
 from app.services.crm import add_activity
 from app.services.demo_guard import external_execution_block
+from app.services.discovery import assign_discovered_lead, record_discovery_gap
 from app.services.enrichment import enrich_lead
 from app.services.external_hold import hold_stale_external_work
 from app.services.idempotency import claim_key, remember_result
 from app.services.inbox import handle_email_received
 from app.services.lifecycle import enroll_sequence
 from app.services.nba import generate_for_lead
-from app.services.qualification import latest_score, qualify_lead
+from app.services.qualification import qualify_lead
 from app.services.rbac import user_permissions
 from app.services.scoring import score_lead
 
@@ -164,11 +168,21 @@ def prepare_outreach(
     correlation_id: str,
     position: int,
 ) -> dict:
-    from app.services.assessment import latest_decision
+    from app.services.assessment import assess_and_store, latest_decision
     from app.services.journey_engine import block_evaluation, evaluation_key, mark_execution
 
-    decision = latest_decision(db, tenant_id=tenant_id, lead_id=lead.id)
-    if decision is not None and decision.response_eligible and lead.source != "ai_discovery":
+    assessment = latest_decision(db, tenant_id=tenant_id, lead_id=lead.id)
+    if assessment is None:
+        assess_and_store(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            lead=lead,
+            settings=settings,
+            correlation_id=correlation_id,
+        )
+        assessment = latest_decision(db, tenant_id=tenant_id, lead_id=lead.id)
+    if assessment is not None and assessment.response_eligible and lead.source != "ai_discovery":
         from app.services.acknowledgement import prepare_acknowledgement
 
         return prepare_acknowledgement(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, settings=settings, run=run)
@@ -255,9 +269,12 @@ def prepare_outreach(
             evaluation=block_evaluation(db, tenant_id=tenant_id, lead=lead, blocked_reason="Lead has no consent"),
         )
         return {"status": "BLOCKED", "reason": "Lead has no consent"}
-    latest = latest_score(db, lead)
-    total = latest.total if latest else 0
-    if total < settings.minimum_lead_score:
+    state = get_state(db, tenant_id=tenant_id, entity_type="lead", entity_id=str(lead.id))
+    if state is not None and state.last_action == "wrong_person":
+        return {"status": "BLOCKED", "reason": "wrong_person"}
+    if state is not None and (state.paused_at is not None or state.state == "PAUSED" or state.last_action == "out_of_office"):
+        return {"status": "BLOCKED", "reason": "paused"}
+    if assessment is None or not assessment.outbound_eligible:
         upsert_state(
             db,
             tenant_id=tenant_id,
@@ -266,7 +283,8 @@ def prepare_outreach(
             entity_id=str(lead.id),
             state="BLOCKED",
             last_action="outreach_blocked",
-            blocked_reason="below minimum score",
+            next_action="review_assessment",
+            blocked_reason="assessment does not permit outbound",
             run_id=run.id,
         )
         mark_execution(
@@ -276,9 +294,9 @@ def prepare_outreach(
             execution_status="blocked",
             business_state="assessed",
             resume_step="outreach",
-            evaluation=block_evaluation(db, tenant_id=tenant_id, lead=lead, blocked_reason="below minimum score"),
+            evaluation=block_evaluation(db, tenant_id=tenant_id, lead=lead, blocked_reason="assessment does not permit outbound"),
         )
-        return {"status": "BLOCKED", "reason": "below minimum score", "total": total}
+        return {"status": "BLOCKED", "reason": "assessment does not permit outbound"}
     if not settings.sequence_enrollment_enabled or not settings.outreach_preparation_enabled:
         upsert_state(
             db,
@@ -343,16 +361,33 @@ def prepare_outreach(
             run_id=run.id,
         )
         return {"status": "BLOCKED", "reason": "no_sequence"}
-    enrollment = enroll_sequence(
-        db,
-        tenant_id=tenant_id,
-        actor_id=actor_id,
-        sequence=sequence,
-        lead=lead,
-        run_id=run.id,
-        actor_type="ai",
-        authorization=decision,
-    )
+    try:
+        enrollment = enroll_sequence(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            sequence=sequence,
+            lead=lead,
+            run_id=run.id,
+            actor_type="ai",
+            authorization=decision,
+        )
+    except HTTPException as exc:
+        if exc.status_code != 409 or not str(exc.detail).startswith("Product configuration:"):
+            raise
+        upsert_state(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            entity_type="lead",
+            entity_id=str(lead.id),
+            state="BLOCKED",
+            last_action="product_configuration",
+            next_action="choose_operating_plan",
+            blocked_reason=str(exc.detail),
+            run_id=run.id,
+        )
+        return {"status": "BLOCKED", "reason": "product_not_selected", "detail": str(exc.detail)}
     waiting = decision != "execute"
     upsert_state(
         db,
@@ -412,6 +447,8 @@ def run_lead_intake(
     correlation_id: str = "",
     from_step: str = "enrich",
 ) -> dict:
+    from app.services.journey_engine import block_evaluation, mark_execution
+
     settings = get_or_create_settings(db, tenant_id=tenant_id, actor_id=actor_id)
     if not settings.enabled:
         return {"status": "SKIPPED", "reason": "autopilot_disabled"}
@@ -428,8 +465,6 @@ def run_lead_intake(
     )
     run = _intake_run(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, correlation_id=correlation_id)
     if not claimed and key_row.result_ref:
-        from app.services.journey_engine import block_evaluation
-
         existing_state = get_state(db, tenant_id=tenant_id, entity_type="lead", entity_id=str(lead.id))
         if existing_state and existing_state.state in {"BLOCKED", "PAUSED"}:
             current = block_evaluation(
@@ -453,6 +488,8 @@ def run_lead_intake(
         next_action="enrich",
         run_id=run.id,
     )
+    if lead.source == "ai_discovery" and lead.owner_id is None:
+        assign_discovered_lead(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, correlation_id=correlation_id)
     position = 1
     result: dict = {"run_id": str(run.id)}
     steps_from = {"enrich": 0, "score": 1, "qualify": 2, "research": 3, "outreach": 4}.get(from_step, 0)
@@ -480,8 +517,14 @@ def run_lead_intake(
                 action_type="enrich",
             )
             detail = {"skipped": True} if not fresh else enrich_lead(
-                db, tenant_id=tenant_id, actor_id=actor_id, lead=lead, correlation_id=correlation_id
+                db,
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                lead=lead,
+                correlation_id=correlation_id,
+                allow_simulated=lead.source != "ai_discovery",
             )
+            incomplete = bool(detail.get("incomplete")) if isinstance(detail, dict) else False
             _add_step(
                 db,
                 tenant_id=tenant_id,
@@ -489,7 +532,7 @@ def run_lead_intake(
                 run=run,
                 name="enrich",
                 position=position,
-                status="completed",
+                status="incomplete" if incomplete else "completed",
                 detail=detail,
                 entity_type="lead",
                 entity_id=str(lead.id),
@@ -561,6 +604,18 @@ def run_lead_intake(
             next_action="research",
             run_id=run.id,
         )
+        observed = []
+        if lead.source == "ai_discovery" and (lead.title or "").strip():
+            observed.append(
+                Fact(
+                    "persona",
+                    "observed",
+                    lead.title.strip(),
+                    "present",
+                    (lead.discovery_provider or "discovery")[:80],
+                    lead.title.strip()[:500],
+                )
+            )
         qualification = qualify_lead(
             db,
             tenant_id=tenant_id,
@@ -568,6 +623,7 @@ def run_lead_intake(
             lead=lead,
             settings=settings,
             correlation_id=correlation_id,
+            fact_overrides=observed,
         )
         qualified = bool(qualification["qualified"])
         held = bool(qualification.get("held_for_response"))
@@ -625,14 +681,24 @@ def run_lead_intake(
             action_type="research",
         )
         brief = {}
+        research_status = "completed"
         if fresh:
-            brief = research_account(
-                db,
-                tenant_id=tenant_id,
-                actor_id=actor_id,
-                permissions=_permissions(db, actor_id),
-                account_id=lead.account_id,
-            )
+            model = get_llm_provider(db, tenant_id)
+            if isinstance(model, (MockLLMProvider, NotConfiguredLLMProvider)):
+                brief = {
+                    "provider": "unsupported",
+                    "is_mock": True,
+                    "reason": "Account research is not available. No brief was invented.",
+                }
+                research_status = "incomplete"
+            else:
+                brief = research_account(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                    permissions=_permissions(db, actor_id),
+                    account_id=lead.account_id,
+                )
         _add_step(
             db,
             tenant_id=tenant_id,
@@ -640,8 +706,8 @@ def run_lead_intake(
             run=run,
             name="research",
             position=position,
-            status="completed",
-            detail={"provider": brief.get("provider"), "is_mock": brief.get("is_mock"), "skipped": not fresh},
+            status=research_status,
+            detail={"provider": brief.get("provider"), "is_mock": brief.get("is_mock"), "skipped": not fresh, "reason": brief.get("reason", "")},
             entity_type="account",
             entity_id=str(lead.account_id),
             idempotency_key=f"research:{lead.account_id}",
@@ -703,6 +769,32 @@ def run_lead_intake(
         _finish_run(run, summary, run_status)
         remember_result(key_row, str(run.id))
         return result
+
+    if lead.source == "ai_discovery":
+        action = record_discovery_gap(db, tenant_id=tenant_id, actor_id=actor_id, lead=lead)
+        reason = "Lead has no consent" if not lead.consent_email else "assessment does not permit outbound"
+        upsert_state(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            entity_type="lead",
+            entity_id=str(lead.id),
+            state="BLOCKED",
+            last_action="discovery_follow_through",
+            next_action="record_channel_permission" if not lead.consent_email else "review_assessment",
+            blocked_reason=reason,
+            run_id=run.id,
+        )
+        mark_execution(
+            db,
+            tenant_id=tenant_id,
+            entity_id=str(lead.id),
+            execution_status="blocked",
+            business_state="assessed",
+            resume_step="outreach",
+            evaluation=block_evaluation(db, tenant_id=tenant_id, lead=lead, blocked_reason=reason),
+        )
+        result["discovery_gap"] = action
 
     ack = result.get("acknowledgement") or {}
     meeting = result.get("meeting") or {}
@@ -960,6 +1052,11 @@ def due_sequence_work(db: Session, *, tenant_id: UUID, actor_id: UUID) -> dict:
             continue
         lead = _load_lead(db, tenant_id, str(enrollment.lead_id))
         if lead is None or lead.opt_out or (step.action_type in {"email_draft", "email_send", "send"} and not lead.consent_email):
+            continue
+        if is_entity_paused(db, tenant_id=tenant_id, entity_type="lead", entity_id=str(lead.id)):
+            continue
+        lead_state = get_state(db, tenant_id=tenant_id, entity_type="lead", entity_id=str(lead.id))
+        if lead_state is not None and lead_state.last_action == "wrong_person":
             continue
         if external_execution_block(db, tenant_id=tenant_id, action="sequence.email.send", recipient=lead.email or ""):
             continue

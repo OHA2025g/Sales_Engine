@@ -1,6 +1,6 @@
 import json
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -30,6 +30,18 @@ from app.services.provider_ops import (
 from app.services.query import get_owned
 
 PAID_CHANNELS = {"linkedin", "instagram"}
+NO_SPEND = "No ad spend is authorized. A zero, missing, or invalid limit cannot activate a campaign."
+EXHAUSTED_DAILY = "Daily ad spend authorization is exhausted."
+EXHAUSTED_MONTHLY = "Monthly ad spend authorization is exhausted."
+
+
+def _limit(value: object) -> Decimal | None:
+    if value is None or value == "":
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
 
 
 def derived_metrics(metrics: AdsMetrics) -> dict[str, Decimal | None]:
@@ -55,15 +67,23 @@ def budget_block_reason(db: Session, *, settings: AutopilotSettings, campaign: C
     budget = Decimal(str(campaign.budget or 0))
     if budget < 0:
         return "Campaign budget is invalid."
-    if settings.daily_budget_limit and Decimal(str(settings.daily_budget_limit)) > 0:
-        start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-        if spent_in_window(db, tenant_id=settings.tenant_id, start=start) + budget > Decimal(str(settings.daily_budget_limit)):
-            return "Daily ad budget would be exceeded."
-    if settings.monthly_budget_limit and Decimal(str(settings.monthly_budget_limit)) > 0:
-        now = datetime.now(UTC)
-        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if spent_in_window(db, tenant_id=settings.tenant_id, start=start) + budget > Decimal(str(settings.monthly_budget_limit)):
-            return "Monthly ad budget would be exceeded."
+    daily = _limit(settings.daily_budget_limit)
+    monthly = _limit(settings.monthly_budget_limit)
+    if daily is None or monthly is None or daily <= 0 or monthly <= 0:
+        return NO_SPEND
+    start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    spent_today = spent_in_window(db, tenant_id=settings.tenant_id, start=start)
+    if spent_today >= daily:
+        return EXHAUSTED_DAILY
+    if spent_today + budget > daily:
+        return "Daily ad budget would be exceeded."
+    now = datetime.now(UTC)
+    month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    spent_month = spent_in_window(db, tenant_id=settings.tenant_id, start=month)
+    if spent_month >= monthly:
+        return EXHAUSTED_MONTHLY
+    if spent_month + budget > monthly:
+        return "Monthly ad budget would be exceeded."
     return None
 
 

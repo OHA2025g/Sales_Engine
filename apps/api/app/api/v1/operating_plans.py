@@ -71,8 +71,10 @@ def start_plan(
 def research(
     db: Annotated[Session, Depends(get_db)],
     ctx: Annotated[AuthContext, Depends(require_permission("campaigns.write"))],
+    plan_id: UUID | None = None,
+    icp_id: UUID | None = None,
 ) -> Envelope[dict]:
-    data = research_prospects(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id)
+    data = research_prospects(db, tenant_id=ctx.tenant_id, actor_id=ctx.user.id, plan_id=plan_id, icp_id=icp_id)
     db.commit()
     return Envelope(data=data)
 

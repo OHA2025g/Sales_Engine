@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.ai import AIApproval
 from app.models.autonomy import AutonomousRun, AutonomousRunStep, AutopilotSettings
 from app.models.crm import Contact, Lead, Opportunity, Task
-from app.models.identity import User
+from app.models.identity import Tenant, User
 from app.models.lifecycle import Campaign, Quote
 from app.services.ai_budget import ai_budget_reason
 from app.services.audit import emit_event, write_audit
@@ -132,6 +132,8 @@ def run_autonomous_cycle(
         return run
 
     scope = open_demo_scope(db, tenant_id)
+    tenant = db.get(Tenant, tenant_id)
+    demo = tenant is None or (tenant.operating_mode or "DEMO").strip().upper() == "DEMO"
     discovery = {
         "created": 0,
         "skipped": {},
@@ -143,7 +145,7 @@ def run_autonomous_cycle(
         "candidate_count": 0,
         "icp_name": "",
     }
-    if scope is not None:
+    if scope is not None and not demo:
         discovery["reason"] = "Automatic discovery is outside the controlled demonstration."
     elif (
         settings.discovery_enabled

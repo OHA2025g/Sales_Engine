@@ -39,6 +39,7 @@ class AssessmentDecision(Base, TenantOwnedMixin):
     coverage_required: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     confidence: Mapped[str] = mapped_column(String(20), default="none", nullable=False)
     response_eligible: Mapped[bool] = mapped_column(default=False, nullable=False)
+    outbound_eligible: Mapped[bool] = mapped_column(default=False, nullable=False)
     meeting_eligible: Mapped[bool] = mapped_column(default=False, nullable=False)
     sales_qualified: Mapped[bool] = mapped_column(default=False, nullable=False)
     not_a_fit: Mapped[bool] = mapped_column(default=False, nullable=False)

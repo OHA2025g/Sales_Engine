@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,8 +9,25 @@ from sqlalchemy import select
 from app.db.session import get_session
 from app.models.lifecycle import Campaign
 from app.providers.ads import AdsCampaignResult, AdsHealth, AdsMetrics, AdsSpend, MetaAdsProvider, MockAdsProvider
-from app.services.ads import derived_metrics, sync_campaign
+from app.services.ads import EXHAUSTED_DAILY, NO_SPEND, budget_block_reason, derived_metrics, sync_campaign
 from tests.conftest import login
+
+
+def _allow_spend(client: TestClient, headers: dict, daily: str = "100000", monthly: str = "100000") -> None:
+    response = client.patch(
+        "/api/v1/autonomy/settings",
+        headers=headers,
+        json={"daily_budget_limit": daily, "monthly_budget_limit": monthly},
+    )
+    assert response.status_code == 200, response.text
+
+
+def _clear_spend(client: TestClient, headers: dict) -> None:
+    client.patch(
+        "/api/v1/autonomy/settings",
+        headers=headers,
+        json={"daily_budget_limit": 0, "monthly_budget_limit": 0},
+    )
 
 
 def test_launch_queues_approval_and_mock_does_not_invent_spend(client: TestClient, monkeypatch) -> None:
@@ -18,6 +36,7 @@ def test_launch_queues_approval_and_mock_does_not_invent_spend(client: TestClien
         lambda channel, *args, **kwargs: MockAdsProvider(channel or "linkedin"),
     )
     headers = login(client)
+    _allow_spend(client, headers)
     created = client.post(
         "/api/v1/lifecycle/campaigns",
         headers=headers,
@@ -40,6 +59,7 @@ def test_launch_queues_approval_and_mock_does_not_invent_spend(client: TestClien
     detail = client.get(f"/api/v1/lifecycle/campaigns/{campaign_id}", headers=headers).json()["data"]
     assert detail["status"] != "launched"
     assert Decimal(str(detail["spent"])) == Decimal("0")
+    _clear_spend(client, headers)
 
 
 class LiveAdsStub:
@@ -77,7 +97,7 @@ class LiveAdsStub:
 
 def test_budget_exceeded_blocks_launch(client: TestClient) -> None:
     headers = login(client)
-    client.patch("/api/v1/autonomy/settings", headers=headers, json={"daily_budget_limit": 100})
+    _allow_spend(client, headers, daily="100", monthly="1000")
     created = client.post(
         "/api/v1/lifecycle/campaigns",
         headers=headers,
@@ -85,13 +105,15 @@ def test_budget_exceeded_blocks_launch(client: TestClient) -> None:
     )
     launch = client.post(f"/api/v1/lifecycle/campaigns/{created.json()['data']['id']}/launch", headers=headers)
     assert launch.status_code == 409
-    client.patch("/api/v1/autonomy/settings", headers=headers, json={"daily_budget_limit": 0})
+    assert "exceeded" in launch.text
+    _clear_spend(client, headers)
 
 
 def test_successful_launch_and_idempotent_retry(client: TestClient, monkeypatch) -> None:
     stub = LiveAdsStub()
     monkeypatch.setattr("app.services.ads.get_ads_provider", lambda channel, *args, **kwargs: stub)
     headers = login(client)
+    _allow_spend(client, headers)
     created = client.post(
         "/api/v1/lifecycle/campaigns",
         headers=headers,
@@ -109,6 +131,7 @@ def test_successful_launch_and_idempotent_retry(client: TestClient, monkeypatch)
     detail = client.get(f"/api/v1/lifecycle/campaigns/{campaign_id}", headers=headers).json()["data"]
     assert detail["status"] == "launched"
     assert detail["external_campaign_id"] == "urn:li:sponsoredCampaign:99"
+    _clear_spend(client, headers)
 
 
 def test_provider_error_does_not_mark_launched(client: TestClient, monkeypatch) -> None:
@@ -118,6 +141,7 @@ def test_provider_error_does_not_mark_launched(client: TestClient, monkeypatch) 
 
     monkeypatch.setattr("app.services.ads.get_ads_provider", lambda channel, *args, **kwargs: BrokenAds())
     headers = login(client)
+    _allow_spend(client, headers)
     created = client.post(
         "/api/v1/lifecycle/campaigns",
         headers=headers,
@@ -129,6 +153,7 @@ def test_provider_error_does_not_mark_launched(client: TestClient, monkeypatch) 
     detail = client.get(f"/api/v1/lifecycle/campaigns/{campaign_id}", headers=headers).json()["data"]
     assert detail["status"] != "launched"
     assert not detail["external_campaign_id"]
+    _clear_spend(client, headers)
 
 
 def test_metric_normalization_requires_inputs() -> None:
@@ -146,6 +171,7 @@ def test_status_sync_uses_provider_metrics(client: TestClient, monkeypatch) -> N
     stub = LiveAdsStub()
     monkeypatch.setattr("app.services.ads.get_ads_provider", lambda channel, *args, **kwargs: stub)
     headers = login(client)
+    _allow_spend(client, headers)
     created = client.post(
         "/api/v1/lifecycle/campaigns",
         headers=headers,
@@ -165,6 +191,7 @@ def test_status_sync_uses_provider_metrics(client: TestClient, monkeypatch) -> N
         assert row.spent == Decimal("12.50")
     finally:
         db.close()
+    _clear_spend(client, headers)
 
 
 def test_outbound_campaign_cannot_launch(client: TestClient) -> None:
@@ -194,6 +221,7 @@ def test_sandbox_does_not_send_an_activation_request(client: TestClient, monkeyp
     )
     monkeypatch.setattr("app.services.ads.get_ads_provider", lambda channel, *args, **kwargs: provider)
     headers = login(client)
+    _allow_spend(client, headers)
     created = client.post(
         "/api/v1/lifecycle/campaigns",
         headers=headers,
@@ -215,3 +243,83 @@ def test_sandbox_does_not_send_an_activation_request(client: TestClient, monkeyp
     assert detail["status"] != "launched"
     assert Decimal(str(detail["spent"])) == Decimal("0")
     assert seen == []
+    _clear_spend(client, headers)
+
+
+def test_zero_spend_limit_cannot_activate_a_live_campaign(client: TestClient, monkeypatch) -> None:
+    stub = LiveAdsStub()
+    monkeypatch.setattr("app.services.ads.get_ads_provider", lambda channel, *args, **kwargs: stub)
+    headers = login(client)
+    _clear_spend(client, headers)
+    created = client.post(
+        "/api/v1/lifecycle/campaigns",
+        headers=headers,
+        json={"name": "Zero cap", "channel": "linkedin", "budget": "100"},
+    )
+    launch = client.post(f"/api/v1/lifecycle/campaigns/{created.json()['data']['id']}/launch", headers=headers)
+    assert launch.status_code == 409
+    assert NO_SPEND in launch.text
+    assert stub.launches == 0
+    _allow_spend(client, headers)
+    queued = client.post(f"/api/v1/lifecycle/campaigns/{created.json()['data']['id']}/launch", headers=headers)
+    assert queued.status_code == 200, queued.text
+    _clear_spend(client, headers)
+    decided = client.post(
+        f"/api/v1/ai/approvals/{queued.json()['data']['approval_id']}/decide",
+        headers=headers,
+        json={"decision": "approve", "note": "limit removed"},
+    )
+    assert decided.status_code == 200
+    assert stub.launches == 0
+    detail = client.get(f"/api/v1/lifecycle/campaigns/{created.json()['data']['id']}", headers=headers).json()["data"]
+    assert detail["status"] != "launched"
+
+
+def test_missing_and_invalid_limits_do_not_authorize_spend() -> None:
+    class Settings:
+        tenant_id = UUID(int=1)
+        daily_budget_limit = None
+        monthly_budget_limit = 100
+
+    class CampaignRow:
+        budget = Decimal("10")
+
+    assert budget_block_reason(None, settings=Settings(), campaign=CampaignRow()) == NO_SPEND  # type: ignore[arg-type]
+    Settings.daily_budget_limit = "nope"
+    assert budget_block_reason(None, settings=Settings(), campaign=CampaignRow()) == NO_SPEND  # type: ignore[arg-type]
+    Settings.daily_budget_limit = -1
+    Settings.monthly_budget_limit = 100
+    assert budget_block_reason(None, settings=Settings(), campaign=CampaignRow()) == NO_SPEND  # type: ignore[arg-type]
+    Settings.daily_budget_limit = 0
+    assert budget_block_reason(None, settings=Settings(), campaign=CampaignRow()) == NO_SPEND  # type: ignore[arg-type]
+
+
+def test_exhausted_spend_limit_cannot_activate(client: TestClient, monkeypatch) -> None:
+    stub = LiveAdsStub()
+    monkeypatch.setattr("app.services.ads.get_ads_provider", lambda channel, *args, **kwargs: stub)
+    headers = login(client)
+    _allow_spend(client, headers, daily="100", monthly="100")
+    spent = client.post(
+        "/api/v1/lifecycle/campaigns",
+        headers=headers,
+        json={"name": "Already spent", "channel": "linkedin", "budget": "10"},
+    )
+    db = get_session()
+    try:
+        row = db.get(Campaign, UUID(spent.json()["data"]["id"]))
+        assert row is not None
+        row.spent = Decimal("100")
+        row.last_synced_at = datetime.now(UTC)
+        db.commit()
+    finally:
+        db.close()
+    created = client.post(
+        "/api/v1/lifecycle/campaigns",
+        headers=headers,
+        json={"name": "Past the cap", "channel": "linkedin", "budget": "10"},
+    )
+    launch = client.post(f"/api/v1/lifecycle/campaigns/{created.json()['data']['id']}/launch", headers=headers)
+    assert launch.status_code == 409
+    assert EXHAUSTED_DAILY in launch.text
+    assert stub.launches == 0
+    _clear_spend(client, headers)

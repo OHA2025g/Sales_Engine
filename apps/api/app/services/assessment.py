@@ -25,7 +25,7 @@ from app.services.audit import emit_event
 RULES_VERSION = "heuristics-v2"
 OBSERVATION_WINDOW_DAYS = 90
 REQUIRED_FACETS = ("industry", "employees", "geography", "persona", "business_need")
-FACT_CLASSES = {"unknown", "self_reported", "inferred", "verified"}
+FACT_CLASSES = {"unknown", "self_reported", "observed", "inferred", "verified"}
 INBOUND_SOURCES = {"inbound", "public_form", "website", "event", "manual"}
 FREE_MAIL_DOMAINS = {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"}
 MEETING_MARKERS = (
@@ -258,6 +258,9 @@ def decide_assessment(
         sales_qualified = all(
             _requirement_met(str(active_rules.get(name) or "off"), fact, rules=active_rules, facet=name) for name, fact in gates.items()
         ) and _company_fit(by_facet, active_rules)
+    known_facets = {name for name in ("industry", "employees", "persona", "business_need") if _known(by_facet[name])}
+    prospect_identified = bool(company_name.strip() or known_facets)
+    outbound_eligible = bool(consent_email and not opt_out and eligible_identity and not enquiry and prospect_identified)
 
     if identity == "suppressed" or not_a_fit:
         next_action = "stop"
@@ -269,6 +272,8 @@ def decide_assessment(
         next_action = "handoff_opportunity"
     elif meeting_eligible:
         next_action = "book_discovery_meeting"
+    elif outbound_eligible:
+        next_action = "prepare_outreach"
     elif response_eligible:
         next_action = "acknowledge"
     else:
@@ -285,6 +290,8 @@ def decide_assessment(
         reasons.append("response_eligible")
     if meeting_eligible:
         reasons.append("meeting_eligible")
+    if outbound_eligible:
+        reasons.append("outbound_eligible")
     if sales_qualified:
         reasons.append("sales_qualified")
     return {
@@ -294,6 +301,7 @@ def decide_assessment(
         "coverage_required": len(REQUIRED_FACETS),
         "confidence": confidence,
         "response_eligible": response_eligible,
+        "outbound_eligible": outbound_eligible,
         "meeting_eligible": meeting_eligible,
         "sales_qualified": sales_qualified,
         "not_a_fit": not_a_fit,
@@ -338,7 +346,10 @@ def assess_and_store(
     account = db.get(Account, lead.account_id) if lead.account_id else None
     contact = db.get(Contact, lead.contact_id) if lead.contact_id else None
     opt_out = bool(lead.opt_out or (contact.opt_out if contact is not None else False))
-    facts = derive_facts(lead, account, _default_icp(db, tenant_id), overrides=overrides)
+    bound_icp = db.get(ICP, lead.icp_id) if lead.icp_id else None
+    if bound_icp is None or bound_icp.tenant_id != tenant_id or bound_icp.deleted_at is not None:
+        bound_icp = _default_icp(db, tenant_id) if lead.icp_id is None else None
+    facts = derive_facts(lead, account, bound_icp, overrides=overrides)
     decision = decide_assessment(
         facts=facts,
         consent_email=bool(lead.consent_email),
@@ -365,6 +376,7 @@ def assess_and_store(
         coverage_required=decision["coverage_required"],
         confidence=decision["confidence"],
         response_eligible=decision["response_eligible"],
+        outbound_eligible=decision["outbound_eligible"],
         meeting_eligible=decision["meeting_eligible"],
         sales_qualified=decision["sales_qualified"],
         not_a_fit=decision["not_a_fit"],

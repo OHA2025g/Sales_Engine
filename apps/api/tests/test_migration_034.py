@@ -37,7 +37,7 @@ def test_migration_034_enforces_tenant_isolation_on_a_disposable_database() -> N
     try:
         with admin.connect() as conn:
             conn.execute(text(f'CREATE DATABASE "{name}"'))
-        _alembic(url, "upgrade", "head")
+        _alembic(url, "upgrade", "034")
         disposable = _connect(url)
         with disposable.connect() as conn:
             version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()

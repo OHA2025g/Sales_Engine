@@ -49,6 +49,7 @@ celery_app.conf.update(
         "ml-evaluate-matured": {"task": "ml_evaluate_matured", "schedule": 86400.0},
         "scheduler-heartbeat": {"task": "scheduler_heartbeat", "schedule": 60.0},
         "hold-stale-external-work": {"task": "hold_stale_external_work", "schedule": 60.0},
+        "publish-due-operating-plans": {"task": "publish_due_operating_plans", "schedule": 60.0},
         "operator-daily-brief": {"task": "operator_daily_brief", "schedule": 86400.0},
     },
 )
@@ -106,6 +107,26 @@ def hold_stale_external_work() -> int:
             total = sum(hold_rows(db).values())
         db.commit()
         return total
+    finally:
+        db.close()
+
+
+@celery_app.task(name="publish_due_operating_plans")
+def publish_due_operating_plans() -> int:
+    from app.db.session import get_engine, get_session
+    from app.db.tenant_context import supports_rls
+    from app.db.tenant_jobs import run_per_tenant
+    from app.services.marketing import publish_due_versions
+
+    get_engine()
+    db = get_session()
+    try:
+        if supports_rls(db):
+            count = run_per_tenant(db, lambda _tenant_id: publish_due_versions(db))
+        else:
+            count = publish_due_versions(db)
+        db.commit()
+        return count
     finally:
         db.close()
 

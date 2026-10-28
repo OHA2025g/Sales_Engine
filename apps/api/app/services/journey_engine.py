@@ -13,8 +13,8 @@ from app.models.crm import ICP, Account, Lead, Opportunity, Task
 from app.models.execution import JourneyLink, SlaClock, StageEvidence
 from app.models.lifecycle import MeetingRecord, Sequence, SequenceEnrollment, SequenceStep
 from app.services.automation_state import get_state, upsert_state
-from app.services.content import draft_email_from_facts
 from app.services.crm import STAGE_PROBABILITY, add_activity
+from app.services.outbound_draft import ProductConfigurationError, prepare_sequence_draft
 
 SUPPORTED_STEPS = {"email_draft", "email_send", "send", "wait", "task", "branch", "meeting"}
 PROGRESS_STATES = {
@@ -85,6 +85,15 @@ def select_activated_sequence(db: Session, tenant_id: UUID, lead: Lead | None = 
         )
         .order_by(Sequence.routing_priority.desc(), Sequence.created_at.desc())
     ).all()
+    if lead is not None and lead.operating_plan_id is not None:
+        bound = [
+            sequence
+            for sequence in rows
+            if sequence.operating_plan_id == lead.operating_plan_id and sequence_is_runnable(db, sequence)
+        ]
+        if len(bound) == 1:
+            return bound[0]
+        return None
     for sequence in rows:
         if not sequence_is_runnable(db, sequence):
             continue
@@ -200,6 +209,11 @@ def execute_due_step(
     lead: Lead,
 ) -> str:
     kind = step.action_type
+    state = get_state(db, tenant_id=tenant_id, entity_type="lead", entity_id=str(lead.id))
+    if state is not None and state.last_action == "wrong_person":
+        enrollment.status = "stopped"
+        enrollment.next_run_at = None
+        return "stopped"
     if kind not in SUPPORTED_STEPS:
         enrollment.status = "blocked"
         return "unsupported"
@@ -253,6 +267,7 @@ def execute_due_step(
         _advance(db, enrollment, step)
         return "meeting"
     key = f"sequence.email.send:{lead.id}:{enrollment.id}:{enrollment.current_step}"
+    db.flush()
     exists = db.scalar(
         select(AIApproval).where(
             AIApproval.tenant_id == tenant_id,
@@ -261,6 +276,23 @@ def execute_due_step(
         )
     )
     if exists is None:
+        sequence = db.get(Sequence, enrollment.sequence_id)
+        if sequence is None or sequence.tenant_id != tenant_id:
+            enrollment.status = "blocked"
+            return "missing_sequence"
+        try:
+            draft = prepare_sequence_draft(
+                db,
+                tenant_id=tenant_id,
+                sequence=sequence,
+                enrollment=enrollment,
+                step=step,
+                lead=lead,
+            )
+        except ProductConfigurationError:
+            enrollment.status = "blocked"
+            enrollment.next_run_at = None
+            return "product_configuration"
         db.add(
             AIApproval(
                 tenant_id=tenant_id,
@@ -268,15 +300,7 @@ def execute_due_step(
                 action_level=2,
                 action_type="sequence.email.send",
                 title=f"Send sequence step for {lead.email}",
-                payload_json=json.dumps(
-                    {
-                        "enrollment_id": str(enrollment.id),
-                        "lead_id": str(lead.id),
-                        "template": step.template,
-                        "subject": "Follow-up",
-                        "body": draft_email_from_facts(db, tenant_id, step.template),
-                    }
-                ),
+                payload_json=json.dumps(draft),
                 status="pending",
                 entity_type="lead",
                 entity_id=str(lead.id),

@@ -65,6 +65,14 @@ export type Lead = {
   latest_score: LeadScore | null;
   owner_id?: string | null;
   owner_name?: string;
+  operating_plan_id?: string | null;
+  icp_id?: string | null;
+  product_name?: string;
+  enrichment_state?: string;
+  missing_information?: string;
+  eligibility?: string;
+  next_action?: string;
+  approval_id?: string;
 };
 
 export type Opportunity = {
@@ -176,6 +184,14 @@ export type Approval = {
   risk?: string;
   expected_outcome?: string;
   message?: string;
+  subject?: string;
+  product_name?: string;
+  generation?: string;
+  context_version?: string;
+  personalisation?: string;
+  missing_information?: string;
+  eligibility?: string;
+  next_action?: string;
   commercial_impact?: string;
   budget_impact?: string;
   category?: string;

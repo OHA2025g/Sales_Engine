@@ -1,5 +1,6 @@
 """Stale-work holds, mail-loop limits, explicit offers, and demonstration scope."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -9,16 +10,21 @@ from sqlalchemy import func, select
 
 from app.db.session import get_session
 from app.models.ai import AIApproval
+from app.models.autonomy import AutopilotSettings
 from app.models.crm import Lead
+from app.models.execution import AuthorizationGrant
 from app.models.identity import AuditLog, DomainEvent, User
 from app.models.integrations import EmailMessage
 from app.models.lifecycle import Conversation, Product
 from app.models.operating_plan import CreativeVersion, DemoScope, OperatingPlan
-from app.services.demo_guard import external_execution_block
+from app.services.demo_guard import external_execution_block, seal_scope
 from app.services.email_send import execute_email_send, retry_retrying_sends
 from app.services.event_delivery import replay_event
 from app.services.external_hold import hold_stale_external_work
+from app.services.grants import send_authorization
+from app.services.marketing import generate_draft
 from app.services.reply_router import route_reply
+from app.workers.celery_app import process_outbox
 from app.workers.health import worker_heartbeat_fresh
 from tests.conftest import login
 
@@ -544,3 +550,253 @@ def test_stale_retry_is_held_before_a_provider_call(client: TestClient, monkeypa
         assert db.get(EmailMessage, message.id) is not None
     finally:
         db.close()
+
+
+def test_acknowledgement_grant_does_not_release_other_email(client: TestClient) -> None:
+    _ = client
+    db = get_session()
+    grant = None
+    try:
+        user = _user(db)
+        settings = db.scalar(select(AutopilotSettings).where(AutopilotSettings.tenant_id == user.tenant_id, AutopilotSettings.deleted_at.is_(None)))
+        assert settings is not None and settings.email_approval_required
+        grant = AuthorizationGrant(
+            tenant_id=user.tenant_id,
+            created_by=user.id,
+            name="One acknowledgement",
+            mode="bounded_autopilot",
+            workflow="inbound",
+            channel="email",
+            template_version="email.acknowledge",
+            volume_cap=1,
+            status="active",
+            expires_at=datetime.now(UTC) + timedelta(days=2),
+        )
+        db.add(grant)
+        db.commit()
+        assert send_authorization(db, tenant_id=user.tenant_id, settings=settings, action_type="email.acknowledge") == "execute"
+        assert send_authorization(db, tenant_id=user.tenant_id, settings=settings, action_type="email.send") == "approval"
+        assert send_authorization(db, tenant_id=user.tenant_id, settings=settings, action_type="sequence.email.send") == "approval"
+    finally:
+        if grant is not None:
+            grant.status = "revoked"
+            db.commit()
+        db.close()
+
+
+def test_bound_scope_reopens_when_its_buyer_changes(client: TestClient) -> None:
+    _ = client
+    db = get_session()
+    scope = None
+    try:
+        user = _user(db)
+        scope = DemoScope(
+            tenant_id=user.tenant_id,
+            created_by=user.id,
+            buyer_email="controlled.buyer@example.com",
+            sender_mailbox="sender@example.com",
+            channel="linkedin",
+            action_limit=4,
+            status="authorized",
+            allowed_actions=json.dumps(
+                {"social.publish": 1, "email.acknowledge": 1, "email.send": 1, "calendar.book": 1}
+            ),
+            expires_at=datetime.now(UTC) + timedelta(days=2),
+        )
+        db.add(scope)
+        db.commit()
+        seal_scope(scope)
+        db.commit()
+        assert (
+            external_execution_block(
+                db,
+                tenant_id=user.tenant_id,
+                action="sequence.email.send",
+                recipient="controlled.buyer@example.com",
+            )
+            == "Sequence outreach is outside this demonstration."
+        )
+        assert (
+            external_execution_block(
+                db,
+                tenant_id=user.tenant_id,
+                action="email.acknowledge",
+                recipient="controlled.buyer@example.com",
+            )
+            == ""
+        )
+        scope.buyer_email = "other@example.com"
+        db.commit()
+        blocked = external_execution_block(
+            db,
+            tenant_id=user.tenant_id,
+            action="email.acknowledge",
+            recipient="other@example.com",
+        )
+        assert "reviewed again" in blocked
+        assert scope.status == "prepared"
+    finally:
+        if scope is not None:
+            scope.status = "closed"
+            db.commit()
+        db.close()
+
+
+def test_combined_offer_draft_keeps_the_product_name_and_saved_prices(client: TestClient) -> None:
+    headers = login(client)
+    setup = client.post(
+        "/api/v1/content/products",
+        headers=headers,
+        json={"sku": f"setup-{uuid4().hex[:6]}", "name": "One-time setup, under 200 employees", "description": "One-time setup of ₹3,00,000 for a company under 200 employees.", "kind": "one_time", "list_price": "300000.00", "currency": "INR"},
+    )
+    monthly = client.post(
+        "/api/v1/content/products",
+        headers=headers,
+        json={"sku": f"monthly-{uuid4().hex[:6]}", "name": "Revenue OS monthly", "description": "Starting monthly price of ₹50,000 for a company of about 50 to 200 employees.", "kind": "subscription", "list_price": "50000.00", "currency": "INR"},
+    )
+    assert setup.status_code == 200, setup.text
+    assert monthly.status_code == 200, monthly.text
+    setup_id = setup.json()["data"]["id"]
+    db = get_session()
+    plan = None
+    try:
+        user = _user(db)
+        for open_plan in db.scalars(select(OperatingPlan).where(OperatingPlan.tenant_id == user.tenant_id, OperatingPlan.deleted_at.is_(None), OperatingPlan.status.in_(["running", "blocked", "paused"]))).all():
+            open_plan.status = "completed"
+        plan = OperatingPlan(
+            tenant_id=user.tenant_id,
+            created_by=user.id,
+            product_id=UUID(setup_id),
+            channel="linkedin",
+            audience="India B2B revenue teams · technology,software · india · CEO,Founder,CRO",
+            status="running",
+            next_action="generate_draft",
+            context_snapshot=json.dumps(
+                {
+                    "name": "Autonomous Revenue OS",
+                    "description": "One workspace runs the revenue cycle. Autopilot prepares the work. A person approves send, spend, and dial.",
+                    "customer_audience": "Founders, CEOs, CROs, and revenue leaders at B2B companies in India with a sales team",
+                    "offer_lines": [
+                        {"description": "One-time setup of ₹3,00,000 for a company under 200 employees."},
+                        {"description": "Starting monthly price of ₹50,000 for a company of about 50 to 200 employees."},
+                    ],
+                }
+            ),
+        )
+        db.add(plan)
+        db.commit()
+        result = generate_draft(db, tenant_id=user.tenant_id, actor_id=user.id)
+        db.commit()
+        version = db.get(CreativeVersion, UUID(result["version_id"]))
+        assert version is not None
+        assert version.status == "draft"
+        assert version.headline == "Autonomous Revenue OS"
+        assert "INR 300,000" in version.body
+        assert "under 200 employees" in version.body
+        assert "₹50,000" not in version.body
+        assert "50,000" not in version.body
+        assert "50000" not in version.body
+        assert "200 to 1,000" not in version.body
+        assert "One-time setup, under 200 employees" not in version.headline
+        assert "GOV" not in version.headline
+        assert "For Founders, CEOs, CROs, and revenue leaders at B2B companies in India with a sales team." in version.body
+        assert "technology,software" not in version.body
+    finally:
+        if plan is not None:
+            plan.status = "completed"
+            db.commit()
+        db.close()
+
+
+def test_prepared_scope_does_not_approve_or_send_the_acknowledgement(client: TestClient, mock_providers: None) -> None:
+    _ = mock_providers
+    headers = login(client)
+    settings = client.patch(
+        "/api/v1/autonomy/settings",
+        headers=headers,
+        json={"enabled": True, "quiet_hours_start": "00:00", "quiet_hours_end": "00:00"},
+    )
+    assert settings.status_code == 200, settings.text
+    email = f"prepared.{uuid4().hex[:8]}@example.com"
+    db = get_session()
+    scope_id = None
+    grant_id = None
+    try:
+        user = _user(db)
+        scope = DemoScope(
+            tenant_id=user.tenant_id,
+            created_by=user.id,
+            channel="linkedin",
+            buyer_email=email,
+            sender_mailbox="sender@example.com",
+            action_limit=3,
+            status="prepared",
+            expires_at=datetime.now(UTC) + timedelta(hours=72),
+            allowed_actions=json.dumps({"email.acknowledge": 1, "email.send": 1, "calendar.book": 1}),
+        )
+        grant = AuthorizationGrant(
+            tenant_id=user.tenant_id,
+            created_by=user.id,
+            name="Prepared acknowledgement check",
+            mode="bounded_autopilot",
+            workflow="inbound",
+            channel="email",
+            template_version="email.acknowledge",
+            volume_cap=1,
+            status="active",
+            expires_at=datetime.now(UTC) + timedelta(hours=72),
+        )
+        db.add(scope)
+        db.add(grant)
+        db.commit()
+        scope_id = scope.id
+        grant_id = grant.id
+    finally:
+        db.close()
+    captured = client.post(
+            "/api/v1/acquisition/capture",
+            headers=headers,
+            json={
+                "first_name": "Buyer",
+                "last_name": "Enquiry",
+                "email": email,
+                "company_name": "Local Test",
+                "consent_email": True,
+                "source": "inbound",
+                "request_note": "We want to see the revenue workspace.",
+            },
+        )
+    try:
+        assert captured.status_code == 200, captured.text
+        lead_id = captured.json()["data"]["lead"]["id"]
+        process_outbox()
+        process_outbox()
+        db = get_session()
+        try:
+            messages = db.scalars(
+                select(EmailMessage).where(EmailMessage.lead_id == UUID(lead_id), EmailMessage.direction == "outbound")
+            ).all()
+            assert list(messages) == []
+            approval = db.scalar(
+                select(AIApproval).where(
+                    AIApproval.entity_id == lead_id,
+                    AIApproval.action_type == "email.acknowledge",
+                    AIApproval.deleted_at.is_(None),
+                )
+            )
+            assert approval is not None
+            assert approval.status == "pending"
+        finally:
+            db.close()
+    finally:
+        db = get_session()
+        try:
+            scope = db.get(DemoScope, scope_id) if scope_id is not None else None
+            grant = db.get(AuthorizationGrant, grant_id) if grant_id is not None else None
+            if scope is not None:
+                scope.status = "closed"
+            if grant is not None:
+                grant.status = "revoked"
+            db.commit()
+        finally:
+            db.close()

@@ -97,6 +97,14 @@ export default function ApprovalsPage() {
                 <div><dt className="text-[var(--muted)]">Evidence</dt><dd>{row.evidence || "—"}</dd></div>
                 <div><dt className="text-[var(--muted)]">Risk</dt><dd>{row.risk || "—"}</dd></div>
                 <div className="md:col-span-2"><dt className="text-[var(--muted)]">Expected outcome</dt><dd>{row.expected_outcome || "—"}</dd></div>
+                {row.product_name ? <div><dt className="text-[var(--muted)]">Product</dt><dd>{row.product_name}</dd></div> : null}
+                {row.subject ? <div><dt className="text-[var(--muted)]">Subject</dt><dd>{row.subject}</dd></div> : null}
+                {row.generation ? <div><dt className="text-[var(--muted)]">Generation</dt><dd>{labelize(row.generation)}</dd></div> : null}
+                {row.context_version ? <div><dt className="text-[var(--muted)]">Context version</dt><dd>{row.context_version}</dd></div> : null}
+                {row.eligibility ? <div><dt className="text-[var(--muted)]">Eligibility</dt><dd>{labelize(row.eligibility)}</dd></div> : null}
+                {row.next_action ? <div><dt className="text-[var(--muted)]">Next action</dt><dd>{labelize(row.next_action)}</dd></div> : null}
+                {row.missing_information ? <div className="md:col-span-2"><dt className="text-[var(--muted)]">Missing information</dt><dd>{row.missing_information}</dd></div> : null}
+                {row.personalisation ? <div className="md:col-span-2"><dt className="text-[var(--muted)]">Personalisation</dt><dd className="whitespace-pre-wrap">{row.personalisation}</dd></div> : null}
                 {row.budget_impact ? <div><dt className="text-[var(--muted)]">Budget</dt><dd>{row.budget_impact}</dd></div> : null}
               </dl>
               {row.message ? <p className="whitespace-pre-wrap rounded-lg bg-azure-50/60 p-3 text-sm text-ink">{row.message}</p> : null}
